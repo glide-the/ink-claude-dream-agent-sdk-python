@@ -152,9 +152,22 @@ generated business artifact is copied into this public mirror.
 This acceptance used Dream's current SDK `0.2.140`; it proves compatibility of
 the upstream CLI-path/process boundary, not a Dream dependency upgrade to this
 mirror's pinned `0.2.143`. Installed `0.2.143` wheel/sdist smoke and public
-`query()` boundary tests are covered separately above. Real remote HTTP MCP,
-OAuth/logout, Resources, and transient-5xx reconnect are not claimed because
-the selected existing actor had no configured remote MCP server.
+`query()` boundary tests are covered separately above.
+
+A later lane configured a disposable external provider built with the official
+MCP Python SDK `2.0.0` through Dream's public MCP API. The same existing actor
+completed DCR/PKCE authorization, then the normal Chat UI confirmed and
+persisted two HTTP MCP tool results across refresh and same-thread resume while
+using the custom Runtime path. Public logout/remove completed and the final
+server list proved cleanup. This is protocol evidence through the normal local
+Dream/Admin/Gateway/PostgreSQL topology, not a shadow application or a change
+to this SDK mirror.
+
+The provider declared a resource, but Dream's current detail/inventory surface
+did not report Resources/Prompts for that user-scope server. Real Resources UI
+read, transient-5xx reconnect, legacy SSE add, and colon-containing user-scope
+server names therefore remain unclaimed. No provider fixture, credential,
+server identifier, callback, transcript, or workspace body is stored here.
 
 ## Required final audit
 
