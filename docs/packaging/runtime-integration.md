@@ -27,6 +27,16 @@ The pinned baseline is:
 - Official bundled-CLI pin: `2.1.241`
 - Source license: MIT
 
+Version applicability was rechecked on 2026-08-24. PyPI publishes
+`claude-agent-sdk==0.2.144`, but the official Git `main` branch and latest Git
+tag still identify `0.2.143` at the commit above. The `0.2.144` sdist has the
+same 28-file `src` inventory; its source tree differs only in the version file
+and bundled-CLI pin (`2.1.239`). It has no matching public Git source ref or
+new Runtime-path/build extension point. This mirror therefore remains pinned to
+the auditable Git source baseline `0.2.143` and its newer CLI pin `2.1.241`.
+PyPI's highest version number must not be treated as a source-authoritative
+upgrade until a matching upstream ref and complete provenance review exist.
+
 `packaging/upstream.json` is the machine-readable source of truth. As checked on
 2026-08-23, the mirror remote is public and advertises
 `codex/sdk-packaging-flow` as its default (and only) branch. That repository
