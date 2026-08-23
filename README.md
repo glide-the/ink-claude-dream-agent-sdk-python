@@ -12,7 +12,11 @@ pip install claude-agent-sdk
 
 - Python 3.10+
 
-**Note:** The Claude Code CLI is automatically bundled with the package - no separate installation required! The SDK will use the bundled CLI by default. If you prefer to use a system-wide installation or a specific version, you can:
+**Official release note:** Anthropic's platform wheels bundle the Claude Code
+CLI, so they require no separate installation. The portable downstream package
+documented below intentionally excludes that proprietary executable. In either
+case, the existing SDK selection behavior can use a system-wide installation or
+a specific path:
 
 - Install Claude Code separately: `curl -fsSL https://claude.ai/install.sh | bash`
 - Specify a custom path: `ClaudeAgentOptions(cli_path="/path/to/claude")`
@@ -335,6 +339,15 @@ The build script:
 4. Checks the package with twine
 
 See `python scripts/build_wheel.py --help` for all options.
+
+### Reproducible downstream packages
+
+For pinned upstream provenance, read-only sync inspection, a portable SDK-only
+wheel/sdist, repeat-build verification, and isolated official/custom CLI path
+smoke tests, see
+[`docs/packaging/runtime-integration.md`](docs/packaging/runtime-integration.md).
+The downstream procedure does not authorize redistribution of the proprietary
+Claude Code binary; generated artifacts remain local, ignored, and untracked.
 
 ### Release Workflow
 

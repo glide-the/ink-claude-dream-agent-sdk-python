@@ -71,6 +71,9 @@ include = [
     # load their subject out of scripts/ at import time, so an sdist that ships
     # /tests without /scripts cannot even collect its own test suite.
     "/scripts",
+    # Downstream provenance and reproducible packaging documentation/tooling.
+    "/packaging",
+    "/docs/packaging",
     "/examples",
     "/README.md",
     "/LICENSE",
