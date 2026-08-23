@@ -1,4 +1,5 @@
 name: Build and Publish
+# Downstream safety: vendor bundle and publish jobs only run in the official repo.
 
 on:
   workflow_call:
@@ -15,6 +16,7 @@ on:
 
 jobs:
   build-wheels:
+    if: github.repository == 'anthropics/claude-agent-sdk-python'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -41,6 +43,7 @@ jobs:
           if-no-files-found: error
 
   publish:
+    if: github.repository == 'anthropics/claude-agent-sdk-python'
     needs: build-wheels
     runs-on: ubuntu-latest
     environment: production

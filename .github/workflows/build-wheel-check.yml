@@ -1,4 +1,5 @@
 name: Build Wheel Check
+# Downstream safety: vendor-binary wheel checks only run in the official repo.
 
 # Dry-run the wheel build on PRs so we catch packaging regressions
 # before a release, instead of discovering them at publish time.
@@ -18,6 +19,7 @@ on:
 
 jobs:
   build:
+    if: github.repository == 'anthropics/claude-agent-sdk-python'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

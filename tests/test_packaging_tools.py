@@ -1,4 +1,4 @@
-"""Unit checks for downstream provenance and archive safety helpers."""
+"""Unit checks for downstream provenance, archive, and publication safety."""
 
 import importlib.util
 import sys
@@ -38,3 +38,17 @@ def test_archive_member_safety_rejects_traversal_and_absolute_paths() -> None:
     assert not reproducible_build._safe_member("../outside")
     assert not reproducible_build._safe_member("root/../../outside")
     assert not reproducible_build._safe_member("/absolute/path")
+
+
+def test_vendor_build_and_release_workflows_are_official_repo_only() -> None:
+    guard = "github.repository == 'anthropics/claude-agent-sdk-python'"
+    required_guard_counts = {
+        ".github/workflows/auto-release.yml": 2,
+        ".github/workflows/build-and-publish.yml": 2,
+        ".github/workflows/build-wheel-check.yml": 1,
+        ".github/workflows/publish.yml": 1,
+    }
+
+    for relative_path, required_count in required_guard_counts.items():
+        workflow = (PROJECT_ROOT / relative_path).read_text(encoding="utf-8")
+        assert workflow.count(guard) >= required_count, relative_path

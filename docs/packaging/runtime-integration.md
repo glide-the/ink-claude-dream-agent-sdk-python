@@ -20,9 +20,11 @@ The pinned baseline is:
 - Official bundled-CLI pin: `2.1.241`
 - Source license: MIT
 
-`packaging/upstream.json` is the machine-readable source of truth. The mirror's
-public remote currently advertises no default branch or remote refs; verification
-must not infer or create one, and publication remains a separate reviewed action.
+`packaging/upstream.json` is the machine-readable source of truth. As checked on
+2026-08-23, the mirror remote is public and advertises
+`codex/sdk-packaging-flow` as its default (and only) branch. That repository
+state does not authorize package or vendor-binary publication; changing the
+default branch or adding release refs remains a separate reviewed action.
 
 ## Legal and publication boundary
 
@@ -35,6 +37,9 @@ Therefore:
 
 - Never commit or push `dist/`, wheel/sdist files, installer downloads, or a
   Claude Code executable.
+- Upstream vendor-wheel and PyPI release jobs are repository-identity gated to
+  `anthropics/claude-agent-sdk-python`; they must remain skipped in this public
+  mirror even when a workflow is manually dispatched or a packaging PR opens.
 - Keep all generated artifacts local and ignored, even when a package contains
   only MIT source.
 - Do not publish mirror wheels that bundle the official CLI unless Anthropic
@@ -127,6 +132,30 @@ prompt, and is deleted with the temporary HOME. This validates the installed
 SDK → custom Runtime → external-core process boundary without touching IM
 state or duplicating SDK protocol code.
 
+## Out-of-repository real-business acceptance
+
+On 2026-08-23 the unchanged SDK process contract was also exercised by the
+existing local Dream application through its public Deck → Chat → Dream UI,
+current Admin/Gateway services, and current real PostgreSQL data. The same
+existing actor and Deck passed twice: first with the unmodified official Claude
+Code `2.1.241` executable selected directly, then with the packaged clean-room
+Runtime selected through the existing CLI-path injection point and supervising
+that same official executable.
+
+Each lane passed new session, first-token/SSE, multi-turn continuation, internal
+stdio MCP tool/result, workspace, transcript, resume, locked-plugin loading,
+Dream artifact hooks, Episode artifacts, and durable UI re-entry. This evidence
+lives in the Dream release harness and content-free local receipts; no user
+credential, prompt/response body, transcript, workspace material, Run ID, or
+generated business artifact is copied into this public mirror.
+
+This acceptance used Dream's current SDK `0.2.140`; it proves compatibility of
+the upstream CLI-path/process boundary, not a Dream dependency upgrade to this
+mirror's pinned `0.2.143`. Installed `0.2.143` wheel/sdist smoke and public
+`query()` boundary tests are covered separately above. Real remote HTTP MCP,
+OAuth/logout, Resources, and transient-5xx reconnect are not claimed because
+the selected existing actor had no configured remote MCP server.
+
 ## Required final audit
 
 Before handing off source/tooling changes:
@@ -137,5 +166,8 @@ Before handing off source/tooling changes:
 4. Install the wheel outside the source tree and run the isolated smoke test.
 5. Run `git status --short --ignored` and `git ls-files dist` to prove every
    artifact is ignored and untracked.
-6. Do not commit, tag, push, upload, or create a public default branch without
-   explicit parent review and any required Anthropic authorization.
+6. Inspect every vendor-wheel/release workflow and prove its official-repository
+   identity guard remains effective.
+7. Do not commit, tag, push, upload, change the public default branch, or add
+   release refs without explicit parent review and any required Anthropic
+   authorization.

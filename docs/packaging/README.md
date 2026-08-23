@@ -6,6 +6,8 @@ redistribute the Claude Code executable.
 
 - `runtime-integration.md` is the canonical provenance, build, verification,
   runtime-path, and publication-boundary procedure.
+- Vendor-wheel and release workflows must stay repository-identity gated so
+  they cannot execute in the public downstream mirror.
 - Examples must use synthetic prompts and credential-free fixtures.
 - Never paste credentials, environment dumps, transcripts, workspace content,
   downloaded vendor binaries, or generated package artifacts into these docs.

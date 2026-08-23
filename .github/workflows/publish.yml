@@ -1,4 +1,5 @@
 name: Publish to PyPI
+# Downstream safety: the reusable release job is disabled outside the official repo.
 
 on:
   workflow_dispatch:
@@ -73,6 +74,7 @@ jobs:
           echo "previous_tag=$PREVIOUS_TAG" >> $GITHUB_OUTPUT
 
   release:
+    if: github.repository == 'anthropics/claude-agent-sdk-python'
     needs: [test, lint, get-previous-tag]
     permissions:
       contents: write
