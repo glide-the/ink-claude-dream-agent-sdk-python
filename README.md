@@ -1,22 +1,26 @@
-# Claude Agent SDK for Python
+# Ink Claude Dream Agent SDK for Python
 
-Python SDK for Claude Agent. See the [Claude Agent SDK documentation](https://platform.claude.com/docs/en/agent-sdk/python) for more information.
+Portable downstream distribution of the MIT-licensed Claude Agent SDK Python
+source pinned to upstream `0.2.143`. It preserves the `claude_agent_sdk` import
+namespace and public API while intentionally excluding the proprietary Claude
+Code executable. See the [official Claude Agent SDK documentation](https://platform.claude.com/docs/en/agent-sdk/python)
+for SDK usage.
 
 ## Installation
 
 ```bash
-pip install claude-agent-sdk
+pip install ink-claude-dream-agent-sdk
 ```
 
 **Prerequisites:**
 
 - Python 3.10+
 
-**Official release note:** Anthropic's platform wheels bundle the Claude Code
-CLI, so they require no separate installation. The portable downstream package
-documented below intentionally excludes that proprietary executable. In either
-case, the existing SDK selection behavior can use a system-wide installation or
-a specific path:
+This distribution and Anthropic's `claude-agent-sdk` distribution install the
+same `claude_agent_sdk` import namespace. Do not install both in one environment;
+replace the old distribution before installing this one. This portable package
+does not bundle Claude Code. The unchanged SDK selection behavior can use a
+system-wide installation or a specific path:
 
 - Install Claude Code separately: `curl -fsSL https://claude.ai/install.sh | bash`
 - Specify a custom path: `ClaudeAgentOptions(cli_path="/path/to/claude")`
@@ -307,38 +311,21 @@ If you're contributing to this project, run the initial setup script to install 
 
 This installs a pre-push hook that runs lint checks before pushing, matching the CI workflow. To skip the hook temporarily, use `git push --no-verify`.
 
-### Building Wheels Locally
+### Building portable packages locally
 
-To build wheels with the bundled Claude Code CLI:
+Use the pinned, reproducible source-only build documented in
+[`docs/packaging/runtime-integration.md`](docs/packaging/runtime-integration.md).
+The resulting artifact names are:
 
 ```bash
-# Install build dependencies
-pip install build twine
-
-# Build wheel with bundled CLI
-python scripts/build_wheel.py
-
-# Build with specific version
-python scripts/build_wheel.py --version 0.1.4
-
-# Build with specific CLI version
-python scripts/build_wheel.py --cli-version 2.0.0
-
-# Clean bundled CLI after building
-python scripts/build_wheel.py --clean
-
-# Skip CLI download (use existing)
-python scripts/build_wheel.py --skip-download
+ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
+ink_claude_dream_agent_sdk-0.2.143.tar.gz
 ```
 
-The build script:
-
-1. Downloads Claude Code CLI for your platform
-2. Bundles it in the wheel
-3. Builds both wheel and source distribution
-4. Checks the package with twine
-
-See `python scripts/build_wheel.py --help` for all options.
+Default Hatch wheel and sdist targets explicitly exclude
+`src/claude_agent_sdk/_bundled/claude{,.exe}`. The inherited upstream
+`scripts/build_wheel.py` vendor builder also refuses to run under this renamed
+distribution, before downloading anything.
 
 ### Reproducible downstream packages
 
@@ -349,29 +336,13 @@ smoke tests, see
 The downstream procedure does not authorize redistribution of the proprietary
 Claude Code binary; generated artifacts remain local, ignored, and untracked.
 
-### Release Workflow
+### Release policy
 
-The package is published to PyPI via the GitHub Actions workflow in `.github/workflows/publish.yml`. To create a new release:
-
-1. **Trigger the workflow** manually from the Actions tab with two inputs:
-   - `version`: The package version to publish (e.g., `0.1.5`)
-   - `claude_code_version`: The Claude Code CLI version to bundle (e.g., `2.0.0` or `latest`)
-
-2. **The workflow will**:
-   - Build platform-specific wheels for macOS, Linux, and Windows
-   - Bundle the specified Claude Code CLI version in each wheel
-   - Build a source distribution
-   - Publish all artifacts to PyPI
-   - Create a release branch with version updates
-   - Open a PR to main with:
-     - Updated `pyproject.toml` version
-     - Updated `src/claude_agent_sdk/_version.py`
-     - Updated `src/claude_agent_sdk/_cli_version.py` with bundled CLI version
-     - Auto-generated `CHANGELOG.md` entry
-
-3. **Review and merge** the release PR to update main with the new version information
-
-The workflow tracks both the package version and the bundled CLI version separately, allowing you to release a new package version with an updated CLI without code changes.
+No downstream package publication is authorized or configured. The inherited
+vendor-wheel and PyPI workflows are repository-identity gated to
+`anthropics/claude-agent-sdk-python`; in this public mirror they skip before any
+vendor download or upload. See [`RELEASING.md`](RELEASING.md) for the review
+gate that must be satisfied before any future portable publication.
 
 ## License and terms
 

@@ -22,6 +22,8 @@ import verify_upstream
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = PROJECT_ROOT / "dist" / "reproducible"
+DISTRIBUTION_NAME = "ink-claude-dream-agent-sdk"
+DISTRIBUTION_STEM = "ink_claude_dream_agent_sdk"
 
 
 def fail(message: str) -> NoReturn:
@@ -108,8 +110,9 @@ def _safe_member(name: str) -> bool:
 
 def _verify_wheel(path: Path, version: str) -> None:
     """Check the portable wheel shape and absence of a bundled executable."""
-    if not path.name.endswith("-py3-none-any.whl"):
-        fail(f"portable wheel has unexpected platform tag: {path.name}")
+    expected_name = f"{DISTRIBUTION_STEM}-{version}-py3-none-any.whl"
+    if path.name != expected_name:
+        fail(f"portable wheel name is {path.name}, expected {expected_name}")
     with zipfile.ZipFile(path) as archive:
         names = archive.namelist()
         if any(not _safe_member(name) for name in names):
@@ -121,22 +124,36 @@ def _verify_wheel(path: Path, version: str) -> None:
             for name in names
         ):
             fail("portable wheel unexpectedly contains a Claude CLI executable")
-        metadata_names = [
-            name for name in names if name.endswith(".dist-info/METADATA")
-        ]
-        if len(metadata_names) != 1:
-            fail("wheel must contain exactly one METADATA file")
-        metadata = archive.read(metadata_names[0]).decode("utf-8")
+        metadata_name = f"{DISTRIBUTION_STEM}-{version}.dist-info/METADATA"
+        if names.count(metadata_name) != 1:
+            fail(f"wheel must contain exactly one {metadata_name}")
+        metadata = archive.read(metadata_name).decode("utf-8")
+        if f"\nName: {DISTRIBUTION_NAME}\n" not in f"\n{metadata}":
+            fail(f"wheel METADATA name is not {DISTRIBUTION_NAME}")
         if f"\nVersion: {version}\n" not in f"\n{metadata}":
             fail(f"wheel METADATA version is not {version}")
 
 
-def _verify_sdist(path: Path) -> None:
+def _verify_sdist(path: Path, version: str) -> None:
     """Check source provenance and tooling are present in the sdist."""
+    expected_name = f"{DISTRIBUTION_STEM}-{version}.tar.gz"
+    if path.name != expected_name:
+        fail(f"sdist name is {path.name}, expected {expected_name}")
+    expected_root = f"{DISTRIBUTION_STEM}-{version}"
     with tarfile.open(path, "r:gz") as archive:
         names = archive.getnames()
         if any(not _safe_member(name) for name in names):
             fail(f"sdist contains an unsafe path: {path.name}")
+        if any(
+            name != expected_root and not name.startswith(f"{expected_root}/")
+            for name in names
+        ):
+            fail(f"sdist member is outside expected root {expected_root}")
+        if any(
+            name.endswith("/_bundled/claude") or name.endswith("/_bundled/claude.exe")
+            for name in names
+        ):
+            fail("portable sdist unexpectedly contains a Claude CLI executable")
         required_suffixes = {
             "/docs/packaging/README.md",
             "/docs/packaging/runtime-integration.md",
@@ -196,7 +213,7 @@ def _build_once(
     if len(wheels) != 1 or len(sdists) != 1 or len(artifacts) != 2:
         fail(f"expected one wheel and one sdist, found {sorted(artifacts)}")
     _verify_wheel(wheels[0], version)
-    _verify_sdist(sdists[0])
+    _verify_sdist(sdists[0], version)
     return artifacts
 
 

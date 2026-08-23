@@ -18,6 +18,9 @@ on:
 
 jobs:
   check:
+    # This inherited monitor belongs to Anthropic's official PyPI project. The
+    # downstream project is unpublished and has no authorized release workflow.
+    if: github.repository == 'anthropics/claude-agent-sdk-python'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -30,6 +33,7 @@ jobs:
         id: quota
         run: |
           python scripts/check_pypi_quota.py \
+            --package claude-agent-sdk \
             ${PROJECT_LIMIT:+--project-limit "$PROJECT_LIMIT"} \
             ${FILE_LIMIT:+--file-limit "$FILE_LIMIT"}
         env:

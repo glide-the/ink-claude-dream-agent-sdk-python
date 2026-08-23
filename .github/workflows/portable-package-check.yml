@@ -1,0 +1,70 @@
+name: Portable Package Check
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/portable-package-check.yml'
+      - 'CHANGELOG.md'
+      - 'README.md'
+      - 'RELEASING.md'
+      - 'docs/packaging/**'
+      - 'packaging/**'
+      - 'pyproject.toml'
+      - 'scripts/reproducible_build.py'
+      - 'scripts/smoke_installed.py'
+      - 'scripts/update_version.py'
+      - 'scripts/verify_upstream.py'
+      - 'tests/test_packaging_tools.py'
+  push:
+    branches: ['main', 'codex/sdk-packaging-flow', 'codex/sdk-package-rename']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install hash-locked build dependencies
+        run: |
+          python -m pip install \
+            --only-binary=:all: \
+            --require-hashes \
+            -r packaging/build-requirements.lock
+
+      - name: Verify the exact upstream source boundary
+        run: python scripts/verify_upstream.py
+
+      - name: Build and byte-compare portable archives
+        run: python scripts/reproducible_build.py
+
+      - name: Verify exact downstream artifact names
+        run: |
+          set -euo pipefail
+          version=$(python -c "import re; print(re.search(r'__version__ = \"([^\"]+)\"', open('src/claude_agent_sdk/_version.py').read()).group(1))")
+          test -f "dist/reproducible/ink_claude_dream_agent_sdk-${version}-py3-none-any.whl"
+          test -f "dist/reproducible/ink_claude_dream_agent_sdk-${version}.tar.gz"
+          test -f dist/reproducible/SHA256SUMS
+          test "$(find dist/reproducible -maxdepth 1 -type f | wc -l)" -eq 3
+
+      - name: Refuse vendor executables in either archive
+        run: |
+          set -euo pipefail
+          python -m zipfile -l dist/reproducible/*.whl > wheel-members.txt
+          tar -tzf dist/reproducible/*.tar.gz > sdist-members.txt
+          if grep -E '/_bundled/claude(\.exe)?$' wheel-members.txt sdist-members.txt; then
+            echo '::error::portable archive contains a proprietary Claude Code executable'
+            exit 1
+          fi
+
+      # Deliberately no artifact upload, package-index upload, release, tag, or
+      # write permission. Publication requires the separate review in RELEASING.md.

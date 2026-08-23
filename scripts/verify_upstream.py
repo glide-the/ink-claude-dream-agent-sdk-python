@@ -20,6 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_MANIFEST = PROJECT_ROOT / "packaging" / "upstream.json"
 HEX_SHA_RE = re.compile(r"[0-9a-f]{40}\Z")
 SEMVER_RE = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
+UPSTREAM_DISTRIBUTION_NAME = "claude-agent-sdk"
+DOWNSTREAM_DISTRIBUTION_NAME = "ink-claude-dream-agent-sdk"
 
 
 @dataclass(frozen=True)
@@ -172,10 +174,20 @@ def verify_repository(
         "version",
         f"{pin.commit}:pyproject.toml",
     )
+    distribution_at_pin = _extract_assignment(
+        _read_commit_file(repository, pin.commit, "pyproject.toml"),
+        "name",
+        f"{pin.commit}:pyproject.toml",
+    )
     if sdk_at_pin != pin.sdk_version or pyproject_at_pin != pin.sdk_version:
         fail("SDK version in the pinned commit does not match upstream.json")
     if cli_at_pin != pin.bundled_cli_version:
         fail("CLI version in the pinned commit does not match upstream.json")
+    if distribution_at_pin != UPSTREAM_DISTRIBUTION_NAME:
+        fail(
+            "distribution name in the pinned commit is not "
+            f"{UPSTREAM_DISTRIBUTION_NAME}"
+        )
 
     if require_runtime_unchanged:
         ancestor = git(
@@ -223,10 +235,19 @@ def verify_repository(
             "version",
             "working tree pyproject.toml",
         )
+        current_distribution = _extract_assignment(
+            (repository / "pyproject.toml").read_text(encoding="utf-8"),
+            "name",
+            "working tree pyproject.toml",
+        )
         if {current_sdk, current_pyproject} != {pin.sdk_version}:
             fail("working tree SDK versions do not match upstream.json")
         if current_cli != pin.bundled_cli_version:
             fail("working tree CLI version does not match upstream.json")
+        if current_distribution != DOWNSTREAM_DISTRIBUTION_NAME:
+            fail(
+                f"working tree distribution name is not {DOWNSTREAM_DISTRIBUTION_NAME}"
+            )
 
         license_digest = hashlib.sha256(
             (repository / "LICENSE").read_bytes()

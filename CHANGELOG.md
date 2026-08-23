@@ -1,5 +1,14 @@
 # Changelog
 
+### Downstream packaging after the 0.2.143 source pin
+
+- Renamed the downstream Python distribution to
+  `ink-claude-dream-agent-sdk` while preserving the `claude_agent_sdk` import
+  namespace and the exact upstream `0.2.143` runtime source.
+- Made portable wheel/sdist naming and metadata assertions exact, excluded the
+  proprietary Claude Code executable from default builds, and made inherited
+  vendor/release paths fail closed in the public mirror.
+
 ## 0.2.143
 
 ### Internal/Other Changes

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build wheel with bundled Claude Code CLI.
+"""Build an official wheel with bundled Claude Code CLI.
 
 This script handles the complete wheel building process:
 1. Optionally updates version
@@ -12,6 +12,9 @@ Usage:
     python scripts/build_wheel.py --version 0.1.4    # Build with specific version
     python scripts/build_wheel.py --clean            # Clean bundled CLI after build
     python scripts/build_wheel.py --skip-download    # Skip CLI download (use existing)
+
+Renamed downstream distributions are rejected before argument parsing or any
+download. They must use scripts/reproducible_build.py for portable artifacts.
 """
 
 import argparse
@@ -78,9 +81,27 @@ def update_version(version: str) -> None:
 
 
 CLI_VERSION_FILE = Path("src/claude_agent_sdk/_cli_version.py")
+PYPROJECT_FILE = Path("pyproject.toml")
+OFFICIAL_DISTRIBUTION_NAME = "claude-agent-sdk"
 
 # The assignment update_cli_version.py writes.
 CLI_VERSION_PATTERN = re.compile(r'__cli_version__ = "([^"]+)"')
+PROJECT_NAME_PATTERN = re.compile(r'^name = "([^"]+)"$', re.MULTILINE)
+
+
+def require_official_distribution() -> None:
+    """Refuse proprietary vendor bundling for a renamed downstream package."""
+    if not PYPROJECT_FILE.is_file():
+        raise SystemExit(f"vendor wheel build refused: missing {PYPROJECT_FILE}")
+    match = PROJECT_NAME_PATTERN.search(PYPROJECT_FILE.read_text(encoding="utf-8"))
+    if match is None:
+        raise SystemExit("vendor wheel build refused: project name is unreadable")
+    project_name = match.group(1)
+    if project_name != OFFICIAL_DISTRIBUTION_NAME:
+        raise SystemExit(
+            "vendor wheel build refused: proprietary Claude Code bundling is "
+            f"only defined for {OFFICIAL_DISTRIBUTION_NAME!r}, not {project_name!r}"
+        )
 
 
 def _fail_unpinned(reason: str) -> NoReturn:
@@ -348,6 +369,7 @@ def list_artifacts() -> None:
 
 def main() -> None:
     """Main entry point."""
+    require_official_distribution()
     parser = argparse.ArgumentParser(
         description="Build wheel with bundled Claude Code CLI"
     )
