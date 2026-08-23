@@ -104,21 +104,28 @@ normal runtime dependency resolver, then run:
 ```bash
 python scripts/smoke_installed.py \
   --expected-version 0.2.143 \
-  --official-cli /absolute/path/to/claude
+  --official-cli /absolute/path/to/default/claude \
+  --custom-runtime /absolute/path/to/ink-claude-runtime.mjs \
+  --custom-runtime-core /absolute/path/to/official/claude-2.1.241
 ```
 
 The smoke test re-executes under a temporary empty HOME and an allowlisted
-environment. It invokes the official CLI only with `--version`; no prompt,
-credential, model request, or transcript reaches that binary. It verifies that
-the installed SDK's existing default resolution and explicit `cli_path` launch
-command select the official executable.
+environment. It invokes the default official CLI and the custom Runtime's
+selected official core only with `--version`; no prompt, credential, model
+request, or transcript reaches either official binary. It verifies that the
+installed SDK's existing default resolution and explicit `cli_path` launch
+command select the expected executables.
 
-The end-to-end public `query()` check targets a temporary executable fixture.
-The fixture implements only the version probe, initialize response, one fixed
-assistant message, and one fixed result. It has no network behavior, never
-echoes its fixed synthetic prompt, and is deleted with the temporary HOME. This
-validates custom launcher/path compatibility without touching IM state or SDK
-runtime source.
+The end-to-end public `query()` checks target a temporary executable fixture:
+first directly, then through the actual custom Runtime. In the Runtime lane,
+the envelope supervises the fixture as its external core with an exact
+temporary workspace and `CLAUDE_CODE_TMPDIR`; the separately selected official
+core is used only for the bounded version probe. The fixture implements only
+the version probe, initialize response, one fixed assistant message, and one
+fixed result. It has no network behavior, never echoes its fixed synthetic
+prompt, and is deleted with the temporary HOME. This validates the installed
+SDK → custom Runtime → external-core process boundary without touching IM
+state or duplicating SDK protocol code.
 
 ## Required final audit
 

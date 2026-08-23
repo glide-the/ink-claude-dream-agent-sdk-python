@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Smoke-test an installed SDK against official and fixture CLI paths safely.
+"""Smoke-test an installed SDK against official and custom Runtime paths safely.
 
 The parent process re-executes itself with an empty credential-free HOME and a
 small allowlisted environment. The official CLI is invoked only with
-``--version``. The end-to-end query uses a local, no-network fixture that never
-echoes or persists its fixed non-sensitive prompt.
+``--version``. The end-to-end queries use a local, no-network fixture that never
+echoes or persists its fixed non-sensitive prompt. When a custom Runtime is
+provided, the installed SDK executes its public ``query()`` API through that
+Runtime while the Runtime supervises the fixture as its external core.
 """
 
 import argparse
@@ -39,7 +41,24 @@ def _official_cli(candidate: str | None) -> Path:
     return path
 
 
-def _reexec_sandboxed(args: argparse.Namespace, official_cli: Path) -> None:
+def _optional_executable(candidate: str | None, label: str) -> Path | None:
+    """Resolve an optional executable path before environment scrubbing."""
+    if candidate is None:
+        return None
+    path = Path(candidate).expanduser().resolve()
+    if not path.is_file():
+        fail(f"{label} path is not a file: {path}")
+    if not os.access(path, os.X_OK):
+        fail(f"{label} path is not executable: {path}")
+    return path
+
+
+def _reexec_sandboxed(
+    args: argparse.Namespace,
+    official_cli: Path,
+    custom_runtime: Path | None,
+    custom_runtime_core: Path | None,
+) -> None:
     """Run the actual smoke test without inherited credentials or config."""
     with tempfile.TemporaryDirectory(prefix="claude-sdk-smoke-home-") as home:
         home_path = Path(home)
@@ -62,6 +81,15 @@ def _reexec_sandboxed(args: argparse.Namespace, official_cli: Path) -> None:
             "--official-cli",
             str(official_cli),
         ]
+        if custom_runtime is not None and custom_runtime_core is not None:
+            command.extend(
+                [
+                    "--custom-runtime",
+                    str(custom_runtime),
+                    "--custom-runtime-core",
+                    str(custom_runtime_core),
+                ]
+            )
         result = subprocess.run(
             command,
             cwd=home,
@@ -135,8 +163,13 @@ def _write_fixture(directory: Path) -> Path:
     return fixture
 
 
-async def _fixture_query(fixture: Path, sandbox: Path) -> tuple[int, int]:
-    """Run the public query API through the explicit cli_path injection."""
+async def _fixture_query(
+    cli_path: Path,
+    sandbox: Path,
+    *,
+    runtime_core: Path | None = None,
+) -> tuple[int, int]:
+    """Run the public query API through an explicit CLI or Runtime path."""
     from claude_agent_sdk import (
         AssistantMessage,
         ClaudeAgentOptions,
@@ -144,18 +177,31 @@ async def _fixture_query(fixture: Path, sandbox: Path) -> tuple[int, int]:
         query,
     )
 
+    environment = {"CLAUDE_CONFIG_DIR": str(sandbox / ".claude")}
+    if runtime_core is not None:
+        runtime_tmpdir = sandbox / ".claude-tmp"
+        runtime_tmpdir.mkdir(mode=0o700, exist_ok=True)
+        runtime_tmpdir.chmod(0o700)
+        environment.update(
+            {
+                "INK_CLAUDE_CODE_EXECUTABLE": str(runtime_core),
+                "INK_CLAUDE_RUNTIME_WORKSPACE_ROOT": str(sandbox),
+                "CLAUDE_CODE_TMPDIR": str(runtime_tmpdir),
+            }
+        )
+
     messages = [
         message
         async for message in query(
             prompt=FIXED_PROMPT,
             options=ClaudeAgentOptions(
-                cli_path=fixture,
+                cli_path=cli_path,
                 cwd=sandbox,
                 tools=[],
                 setting_sources=[],
                 permission_mode="dontAsk",
                 max_turns=1,
-                env={"CLAUDE_CONFIG_DIR": str(sandbox / ".claude")},
+                env=environment,
             ),
         )
     ]
@@ -164,7 +210,12 @@ async def _fixture_query(fixture: Path, sandbox: Path) -> tuple[int, int]:
     return assistants, results
 
 
-def _run_sandboxed(expected_version: str, official_cli: Path) -> None:
+def _run_sandboxed(
+    expected_version: str,
+    official_cli: Path,
+    custom_runtime: Path | None,
+    custom_runtime_core: Path | None,
+) -> None:
     """Validate the installed distribution and both supported CLI selections."""
     if importlib.metadata.version("claude-agent-sdk") != expected_version:
         fail("installed distribution version does not match --expected-version")
@@ -216,19 +267,69 @@ def _run_sandboxed(expected_version: str, official_cli: Path) -> None:
     print("default_cli_resolution=official")
     print("custom_cli_fixture=ok")
 
+    if custom_runtime is not None and custom_runtime_core is not None:
+        runtime_environment = {
+            **os.environ,
+            "INK_CLAUDE_CODE_EXECUTABLE": str(custom_runtime_core),
+        }
+        runtime_probe = subprocess.run(
+            [str(custom_runtime), "--version"],
+            env=runtime_environment,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if runtime_probe.returncode != 0:
+            fail(f"custom Runtime --version exited {runtime_probe.returncode}")
+        runtime_version_line = runtime_probe.stdout.strip().splitlines()
+        if not runtime_version_line:
+            fail("custom Runtime --version returned no version text")
+
+        assistants, results = asyncio.run(
+            _fixture_query(custom_runtime, sandbox, runtime_core=fixture)
+        )
+        if (assistants, results) != (1, 1):
+            fail(
+                "custom Runtime query did not yield exactly one assistant and one "
+                f"result message: {(assistants, results)}"
+            )
+        print(f"custom_runtime={custom_runtime}")
+        print(f"custom_runtime_core={custom_runtime_core}")
+        print(f"custom_runtime_core_version={runtime_version_line[0]}")
+        print("custom_runtime_query_fixture=ok")
+
 
 def main() -> None:
     """CLI entry point."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--expected-version", required=True)
     parser.add_argument("--official-cli")
+    parser.add_argument("--custom-runtime")
+    parser.add_argument("--custom-runtime-core")
     args = parser.parse_args()
     official_cli = _official_cli(args.official_cli)
+    if bool(args.custom_runtime) != bool(args.custom_runtime_core):
+        fail("--custom-runtime and --custom-runtime-core must be provided together")
+    custom_runtime = _optional_executable(args.custom_runtime, "custom Runtime")
+    custom_runtime_core = _optional_executable(
+        args.custom_runtime_core, "custom Runtime core"
+    )
 
     if os.environ.get(SANDBOX_MARKER) != "1":
-        _reexec_sandboxed(args, official_cli)
+        _reexec_sandboxed(
+            args,
+            official_cli,
+            custom_runtime,
+            custom_runtime_core,
+        )
         return
-    _run_sandboxed(args.expected_version, official_cli)
+    _run_sandboxed(
+        args.expected_version,
+        official_cli,
+        custom_runtime,
+        custom_runtime_core,
+    )
 
 
 if __name__ == "__main__":
