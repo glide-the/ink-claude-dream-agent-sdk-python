@@ -57,6 +57,15 @@ Therefore:
 - Upstream vendor-wheel and PyPI release jobs are repository-identity gated to
   `anthropics/claude-agent-sdk-python`; they must remain skipped in this public
   mirror even when a workflow is manually dispatched or a packaging PR opens.
+- The inherited automated Claude review job is gated to that same official
+  repository because it relies on Anthropic's GitHub App installation and
+  workload-identity variables. Mirror pull requests use the ordinary test,
+  lint, packaging, and provenance checks without impersonating that trust
+  boundary.
+- Inherited real-API E2E, Docker E2E, and example jobs are likewise limited to
+  the official repository's WIF policy. Their skipped mirror status is not a
+  business-test claim; this mirror's installed-package protocol checks and the
+  separately recorded local Dream acceptance remain the applicable evidence.
 - Every job in the inherited manual publish workflow is identity-gated, so a
   mirror dispatch skips before tests, vendor downloads, upload, tag, or push.
 - The portable-package CI workflow has only `contents: read`, does not upload
@@ -89,6 +98,10 @@ MIT license file digest, SDK/CLI versions, ancestry, and an empty diff between
 the current `src/` tree and the pinned official commit. `check_upstream_sync.py`
 reports either `sync_status=exact` or a newer linear candidate plus changed-path
 count. It never fetches, merges, or writes either repository.
+
+The unit-test and MCP-floor CI lanes use a full Git checkout because the
+provenance test reads the exact pinned ancestor and its tree. A depth-1 pull
+request checkout is insufficient and must not be used for those lanes.
 
 For a future sync, fetch the official branch into a dedicated review ref in the
 mirror, review the complete old-pin-to-candidate history/tree/license/API diff,
