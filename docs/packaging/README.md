@@ -16,6 +16,10 @@ redistribute the Claude Code executable.
   verified archives for one day and use OIDC only inside the protected
   `testpypi`/`pypi` publish jobs; it must promote the same bytes through
   TestPyPI verification before PyPI and must not create tags or releases.
+- Manual promotion must check out the explicit immutable `source_ref=v<version>`
+  for build, installed-wheel smoke, and package-index verification. A later
+  `v<version>-publish.<n>` runner tag may repair workflow orchestration without
+  moving the reviewed source tag or changing the promoted source bytes.
 - The downstream distribution name may change independently of the fixed
   `claude_agent_sdk` import namespace; both names require explicit assertions.
 - Version selection is source-ref authoritative: a higher package-index version

@@ -3,6 +3,7 @@
 import importlib.util
 import io
 import json
+import re
 import sys
 import tarfile
 import zipfile
@@ -130,8 +131,14 @@ def test_downstream_publish_workflow_is_portable_oidc_only() -> None:
     assert workflow.count("skip-existing: false") == 2
     assert workflow.count("attestations: true") == 2
     assert "repository-url: https://test.pypi.org/legacy/" in workflow
+    assert "source_ref:" in workflow
+    assert "Immutable reviewed source tag, exactly v<version>" in workflow
+    assert workflow.count("ref: ${{ inputs.source_ref }}") == 3
+    assert 'test "$SOURCE_REF" = "v$RELEASE_VERSION"' in workflow
     assert 'test "$GITHUB_REF_TYPE" = "tag"' in workflow
-    assert 'test "$GITHUB_REF_NAME" = "v$RELEASE_VERSION"' in workflow
+    assert 'git rev-parse "$SOURCE_REF^{commit}"' in workflow
+    assert 'test "$checked_out_commit" = "$source_commit"' in workflow
+    assert 'runner_suffix=${GITHUB_REF_NAME#"$SOURCE_REF-publish."}' in workflow
     assert "sha256sum --check SHA256SUMS" in workflow
     assert "needs: publish-testpypi" in workflow
     assert "needs: verify-testpypi" in workflow
@@ -159,6 +166,21 @@ def test_downstream_publish_workflow_is_portable_oidc_only() -> None:
         "gh release",
     ):
         assert forbidden not in workflow
+
+
+def test_publish_workflow_version_parser_accepts_module_docstring() -> None:
+    version_source = (PROJECT_ROOT / "src/claude_agent_sdk/_version.py").read_text(
+        encoding="utf-8"
+    )
+    matches = re.findall(r'^__version__ = "([^"]+)"$', version_source, re.MULTILINE)
+    assert matches == ["0.2.143"]
+
+    workflow = (PROJECT_ROOT / ".github/workflows/publish-portable.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "matches = re.findall(" in workflow
+    assert "if len(matches) != 1:" in workflow
+    assert "re.fullmatch(r'__version__" not in workflow
 
 
 def test_package_index_promotion_inventory_rejects_source_maps(tmp_path: Path) -> None:
