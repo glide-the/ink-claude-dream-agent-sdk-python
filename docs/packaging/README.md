@@ -22,6 +22,10 @@ redistribute the Claude Code executable.
   without a matching upstream Git ref is evidence to review, not an automatic
   baseline upgrade.
 - Examples must use synthetic prompts and credential-free fixtures.
+- Installed-wheel smoke must cover both the default official CLI resolution and
+  explicit `cli_path` selection of the standalone clean-room Runtime. The latter
+  uses a loopback Anthropic SSE fixture; legacy external-core injection is only
+  an optional rollback-envelope lane.
 - Never paste credentials, environment dumps, transcripts, workspace content,
   downloaded vendor binaries, or generated package artifacts into these docs.
 - Portable wheel/sdist archives and release workflows must reject every
