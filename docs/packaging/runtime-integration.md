@@ -36,6 +36,27 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
 凭据均不得进入 Python 包。继承的 Anthropic 官方发布工作流继续严格锁定官方
 仓库身份，不得启用、改写或借用其发布凭据。
 
+### 2026-08-24 当前验收状态
+
+- 镜像 `main` 与 `origin/main` 均为 `80478608652b64ddd36bcfc6771e43909e46c904`，
+  默认分支为 `main`；本轮验收在独立分支
+  `codex/sdk-cleanroom-runtime-acceptance` 进行。
+- 上游公开 `main` 仍为
+  `542fefb3b94be87760b2513fff889b91bb5b6672`。镜像的 28 个非缓存源码文件与
+  该提交逐字节一致，SDK 版本为 `0.2.143`，公开 API 与 subprocess transport
+  没有下游分叉。
+- 当前本机 `PATH` 选中的官方 Claude CLI 是 `2.1.220`；本轮 standalone
+  clean-room Runtime 候选报告 `2.1.241`。这两个值分别表示实际默认路径和
+  Runtime 兼容版本，不得混写成同一个“当前 CLI”。
+- 隔离安装验收必须同时证明：默认 SDK 路径选择实际 official CLI；显式
+  `ClaudeAgentOptions(cli_path=...)` 选择 standalone clean-room Runtime，并通过
+  本机 loopback Anthropic SSE fixture 完成一轮真实 SDK `query()`。fixture 不访问
+  外网、不读取认证配置，也不把 Runtime、transcript 或用户数据打入 wheel。
+- PyPI 与 TestPyPI 的 `ink-claude-dream-agent-sdk` JSON API 当前均返回 `404`，
+  表示尚无已发布项目。GitHub 的 `pypi`/`testpypi` Environment 和 required
+  reviewer 已配置；PyPI 侧 pending Trusted Publisher 无公开查询接口，本机也没有
+  Twine 用户名、Token 或 `.pypirc`。因此本轮只生成和验证归档，不上传包。
+
 ## Outcome and boundary
 
 This public mirror tracks the official MIT-licensed Python source at an exact
@@ -74,10 +95,9 @@ PyPI's highest version number must not be treated as a source-authoritative
 upgrade until a matching upstream ref and complete provenance review exist.
 
 `packaging/upstream.json` is the machine-readable source of truth. As checked on
-2026-08-23, the mirror remote is public and advertises
-`codex/sdk-packaging-flow` as its default (and only) branch. That repository
-state does not authorize package or vendor-binary publication; changing the
-default branch or adding release refs remains a separate reviewed action.
+2026-08-24, the mirror remote is public and advertises `main` as its default
+branch. That repository state does not authorize package or vendor-binary
+publication; adding release refs remains a separate reviewed action.
 
 ## Legal and publication boundary
 
@@ -188,49 +208,39 @@ distribution it exits before downloading or building a vendor wheel. The
 official-repository workflows retain an independent exact repository-identity
 guard.
 
-## Verify the installed SDK runtime paths
+## 验证安装后的 SDK Runtime 双路径
 
-Install the locally generated portable wheel in a fresh environment using the
-normal runtime dependency resolver. Ensure Anthropic's `claude-agent-sdk`
-distribution is not co-installed, then run:
+在仓库外的新虚拟环境安装本地 portable wheel，确认官方 distribution
+`claude-agent-sdk` 没有共存，然后运行：
 
 ```bash
 python scripts/smoke_installed.py \
   --expected-version 0.2.143 \
   --official-cli /absolute/path/to/default/claude \
-  --custom-runtime /absolute/path/to/ink-claude-runtime.mjs \
-  --custom-runtime-core /absolute/path/to/official/claude-2.1.241
+  --custom-runtime /absolute/path/to/standalone-clean-room-claude
 ```
 
-The smoke test re-executes under a temporary empty HOME and an allowlisted
-environment. It invokes the default official CLI and the custom Runtime's
-selected official core only with `--version`; no prompt, credential, model
-request, or transcript reaches either official binary. It verifies that the
-installed metadata resolves as `ink-claude-dream-agent-sdk==0.2.143`, the files
-provide `claude_agent_sdk` without a vendor executable, and the existing default
-resolution and explicit `cli_path` launch command select the expected
-executables.
+smoke 工具会在规范化后的临时空 `HOME` 和环境变量白名单中重新执行。它检查已
+安装 metadata 只存在 `ink-claude-dream-agent-sdk==0.2.143`，安装文件提供
+`claude_agent_sdk` 且不含 vendor CLI；随后验证默认解析与显式 `cli_path` 分别指向
+预期 executable。官方 CLI 只执行 `--version`，不会收到 prompt。
 
-The end-to-end public `query()` checks target a temporary executable fixture:
-first directly, then through the actual custom Runtime. In the Runtime lane,
-the envelope supervises the fixture as its external core with an exact
-temporary workspace and `CLAUDE_CODE_TMPDIR`; the separately selected official
-core is used only for the bounded version probe. The fixture implements only
-the version probe, initialize response, one fixed assistant message, and one
-fixed result. It has no network behavior, never echoes its fixed synthetic
-prompt, and is deleted with the temporary HOME. This validates the installed
-SDK → custom Runtime → external-core process boundary without touching IM
-state or duplicating SDK protocol code.
+SDK 先通过本地固定 JSONL fixture 完成一轮 `query()`，再把同一个公开
+`query()` 入口指向 standalone Runtime。第二轮由进程内 loopback HTTP fixture
+返回固定 Anthropic SSE，证明 SDK → Runtime → provider 协议可用；不再把 fake
+Claude core 注入 Runtime，也不复制 SDK 或 Dream 状态机。旧 envelope 回滚验收仍
+可额外传入 `--custom-runtime-core`，但它不是 standalone Runtime 的发布门。
 
-## Out-of-repository real-business acceptance
+## 历史业务证据（不替代本次 standalone 验收）
 
-On 2026-08-23 the unchanged SDK process contract was also exercised by the
+On 2026-08-23 the unchanged SDK process contract was exercised by the
 existing local Dream application through its public Deck → Chat → Dream UI,
 current Admin/Gateway services, and current real PostgreSQL data. The same
 existing actor and Deck passed twice: first with the unmodified official Claude
-Code `2.1.241` executable selected directly, then with the packaged clean-room
+Code `2.1.241` executable selected directly, then with the historical envelope
 Runtime selected through the existing CLI-path injection point and supervising
-that same official executable.
+that same official executable. This historical result does not qualify the new
+standalone clean-room Runtime or replace a new Dream business acceptance.
 
 Each lane passed new session, first-token/SSE, multi-turn continuation, internal
 stdio MCP tool/result, workspace, transcript, resume, locked-plugin loading,
