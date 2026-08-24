@@ -1,58 +1,147 @@
-# Releasing the downstream distribution
+# 下游 Python SDK 发布指南
 
-The downstream distribution name is `ink-claude-dream-agent-sdk`; the import
-namespace remains `claude_agent_sdk`. Version `0.2.143` is source-compatible
-with the exact upstream pin recorded in `packaging/upstream.json`.
+本文是 `ink-claude-dream-agent-sdk` 的权威发布合同。Python 导入名继续是
+`claude_agent_sdk`，与上游接口保持一致；这个发行包不能与官方
+`claude-agent-sdk` 同时安装在同一个 Python 环境中。
 
-## Current gate: publication blocked
+当前源码基线由 `packaging/upstream.json` 固定为上游 SDK `0.2.143`。默认
+Hatch 构建和下游发布工作流只生成 MIT Python 源码的通用 wheel/sdist，明确
+排除 `_bundled/claude` 和 `_bundled/claude.exe`。Claude Code CLI 必须作为
+独立 Runtime 安装，并通过上游已有的 `ClaudeAgentOptions.cli_path` 或默认
+`PATH` 解析接入；不得放入本 Python 包。
 
-No GitHub Actions job in this public mirror is authorized to publish packages,
-tags, releases, or vendor binaries. The inherited upstream workflows are kept
-for provenance and remain gated to the exact repository identity
-`anthropics/claude-agent-sdk-python`. Their package URLs and vendor-wheel logic
-refer to Anthropic's official `claude-agent-sdk` release, not this downstream
-distribution.
+## 发布工作流与信任边界
 
-The inherited `scripts/build_wheel.py` also fails before download when the
-project name is not `claude-agent-sdk`. Default Hatch wheel and sdist targets
-exclude `_bundled/claude` and `_bundled/claude.exe` independently of that
-script-level guard.
+下游唯一允许的包索引发布入口是
+`.github/workflows/publish-portable.yml`。它由人工 `workflow_dispatch` 触发，
+只在仓库 `glide-the/ink-claude-dream-agent-sdk-python` 中运行：
 
-## Required review before a future portable release
+1. 无 OIDC 写权限的构建 job 从完整 Git 历史检出源码。
+2. 校验输入版本、`pyproject.toml` 和 `_version.py` 完全一致，并且整个提升
+   流程必须从同版本 `v<version>` 标签触发。
+3. 安装哈希锁定的构建工具，执行 `verify_upstream.py` 和
+   `reproducible_build.py`，独立构建两次并要求字节级一致。
+4. 执行 SHA-256、`twine check --strict`、归档成员检查，并拒绝 Claude CLI 和
+   任何 `*.map` 文件；随后将一个 wheel、一个 sdist 和 `SHA256SUMS` 上传为
+   保留一天的不可变 GitHub artifact。
+5. 独立 smoke job 重新下载 artifact 副本，在全新虚拟环境安装 wheel。依赖
+   安装会访问 Python 包索引，但只接触 smoke runner 的副本；公开 `query()`
+   使用无凭据、无模型网络访问的本地 CLI fixture。联网依赖不能修改 artifact
+   服务中由构建 job 保存的原始发布字节。
+6. `publish-testpypi` 必须同时等待构建和 smoke 成功，并从 artifact 服务重新
+   下载原始字节，而不是复用 smoke runner 的文件。
+7. TestPyPI 发布后，`verify-testpypi` 从 TestPyPI JSON API 比较精确文件名和
+   SHA-256，并重新下载 wheel/sdist 做逐字节摘要验证，生成 promotion receipt。
+8. 只有该机器验证成功后，`publish-pypi` 才进入 `pypi` 人工审批，并将同一个
+   GitHub artifact 的字节上传 PyPI。两个发布 job 才拥有 `id-token: write`；
+   不配置 API Token、`TWINE_PASSWORD` 或 Anthropic 凭据。
 
-Publication remains fail closed until a separately reviewed change provides
-all of the following:
+工作流不创建或推送 Git tag、不创建 GitHub Release、不修改版本，也不启用
+`.github/workflows/publish.yml`、`build-and-publish.yml` 中 Anthropic 官方发布
+身份。那些继承工作流继续以
+`github.repository == 'anthropics/claude-agent-sdk-python'` 锁死，不能作为镜像
+发布入口。
 
-1. Explicit owner authorization for the target package index and project name.
-2. Trusted publishing or a project-scoped token for
-   `ink-claude-dream-agent-sdk`; never reuse Anthropic release credentials.
-3. A portable-only workflow that runs `scripts/reproducible_build.py`, verifies
-   both archive member lists, checks the exact distribution metadata/name, and
-   rejects every bundled Claude Code executable before upload.
-4. Two byte-identical builds from the reviewed clean commit plus `twine check`.
-5. A fresh-environment installed-wheel smoke using the official CLI path and,
-   when available, the custom Runtime path through `ClaudeAgentOptions.cli_path`.
-6. Confirmation that the `src/` diff from the pinned upstream commit is empty
-   and that public API/state-machine/JSONL transport behavior is unchanged.
-7. A human review of the current Anthropic terms and any authorization needed
-   for distribution naming, trademarks, and executable redistribution.
+## 首次启用前的外部配置
 
-Until those controls land, generated wheel/sdist files and checksums remain
-local, ignored, and untracked. Do not upload, tag, push, or create release refs.
+仅提交工作流不会自动获得发布权限。仓库管理员必须在 GitHub 和两个包索引
+完成以下配置，并由另一位审核者复核：
 
-## Versioning and local artifact contract
+### GitHub Environments
 
-The SDK version remains synchronized in `pyproject.toml` and
-`src/claude_agent_sdk/_version.py`. The upstream CLI pin remains recorded in
-`src/claude_agent_sdk/_cli_version.py` for compatibility/provenance, but it is
-not embedded in this distribution.
+创建名称严格匹配的两个 Environment：
 
-For version `0.2.143`, the only accepted portable artifact names are:
+- `testpypi`：配置 required reviewers、禁止触发者自审，并只允许受保护的
+  `v*` 发布标签。
+- `pypi`：配置 required reviewers、禁止触发者自审，并把 deployment branch/
+  tag policy 限制到受保护的 `v*` 发布标签。
+
+Environment 审批是人工发布安全门；YAML 只能声明 Environment 名称，不能替
+仓库管理员自动建立 required reviewers。没有完成该设置时不得执行发布。
+
+### TestPyPI Trusted Publisher
+
+在 `https://test.pypi.org/manage/account/publishing/`（首次项目可用 pending
+publisher）登记：
+
+```text
+Owner: glide-the
+Repository: ink-claude-dream-agent-sdk-python
+Workflow: publish-portable.yml
+Environment: testpypi
+Project: ink-claude-dream-agent-sdk
+```
+
+### PyPI Trusted Publisher
+
+在 `https://pypi.org/manage/account/publishing/` 或项目 Publishing 设置登记：
+
+```text
+Owner: glide-the
+Repository: ink-claude-dream-agent-sdk-python
+Workflow: publish-portable.yml
+Environment: pypi
+Project: ink-claude-dream-agent-sdk
+```
+
+不得复用 Anthropic 官方项目的 publisher、API Token、GitHub Environment 或
+Workload Identity Federation 配置。
+
+## 发布步骤
+
+1. 从已审查、工作区干净的提交确认：
+
+   ```bash
+   python scripts/verify_upstream.py
+   python scripts/reproducible_build.py
+   python -m twine check --strict dist/reproducible/*.whl \
+     dist/reproducible/*.tar.gz
+   ```
+
+2. 为同一审核提交创建并推送 `v0.2.143` 标签。从该标签手动运行
+   `Promote Portable Downstream SDK`，只输入 `version=0.2.143`；工作流没有
+   可直接选择 PyPI、跳过 TestPyPI 的 target 参数。
+3. 批准 `testpypi` Environment。工作流上传同一 artifact 后会自动校验
+   TestPyPI 精确文件集合、元数据 SHA-256 和重新下载字节。也可以在等待 PyPI
+   审批时额外人工下载验证：
+
+   ```bash
+   python -m pip download --no-deps \
+     --index-url https://test.pypi.org/simple/ \
+     'ink-claude-dream-agent-sdk==0.2.143'
+   python -m pip install ./ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
+   python -c 'import claude_agent_sdk; print(claude_agent_sdk.__version__)'
+   ```
+
+4. 检查 `verify-testpypi` 输出的 `promotion_receipt`。只有该 job 成功后，非
+   触发人才批准 `pypi` Environment；这不是一次独立重建，而是继续提升同一
+   GitHub artifact。分支、错版本标签或版本文件不一致会在 TestPyPI 前失败。
+5. 从 PyPI 新建环境安装精确版本，确认安装元数据名为
+   `ink-claude-dream-agent-sdk`、导入名为 `claude_agent_sdk`，且安装文件中没有
+   Claude CLI。随后再执行 Dream 的官方 CLI 与自定义 Runtime 两条业务验收。
+
+包索引文件名不可覆盖，工作流也不使用 `skip-existing`。错误发布应停止后续
+审批并按包索引治理流程 yank；修复必须使用新版本，不得试图覆盖原归档。
+
+## 许可证和禁止项
+
+- 本流程允许发布的只有经校验的 Python wheel/sdist；其源码许可证为 MIT。
+- Anthropic Claude Code 可执行文件、恢复源码、用户 transcript、Workspace
+  正文、插件物化数据、MCP/OAuth 凭据和环境变量不得进入归档或 GitHub
+  artifact。
+- JavaScript source map（任何 `*.map`）不得进入 wheel、sdist、GitHub artifact
+  或包索引发布集合。
+- `scripts/build_wheel.py` 是继承的官方 vendor-wheel 工具，在改名后的下游包
+  会主动拒绝运行；下游发布工作流不得调用它或 `download_cli.py`。
+- 公开项目前仍需仓库所有者确认项目名称、商标和当前发布条款；这不授权发布
+  或修改 Claude Code 二进制。
+
+当前合法的 `0.2.143` 便携产物名只能是：
 
 ```text
 ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
 ink_claude_dream_agent_sdk-0.2.143.tar.gz
 ```
 
-The canonical local procedure is
-[`docs/packaging/runtime-integration.md`](docs/packaging/runtime-integration.md).
+构建、安装 smoke、CLI path 和 Runtime 合同详见
+[`docs/packaging/runtime-integration.md`](docs/packaging/runtime-integration.md)。

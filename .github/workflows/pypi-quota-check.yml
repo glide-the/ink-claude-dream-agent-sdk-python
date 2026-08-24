@@ -19,7 +19,7 @@ on:
 jobs:
   check:
     # This inherited monitor belongs to Anthropic's official PyPI project. The
-    # downstream project is unpublished and has no authorized release workflow.
+    # downstream project uses a separate portable promotion workflow.
     if: github.repository == 'anthropics/claude-agent-sdk-python'
     runs-on: ubuntu-latest
     steps:

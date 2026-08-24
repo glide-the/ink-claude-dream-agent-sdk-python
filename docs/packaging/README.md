@@ -6,10 +6,16 @@ redistribute the Claude Code executable.
 
 - `runtime-integration.md` is the canonical provenance, build, verification,
   runtime-path, and publication-boundary procedure.
+- The repository-root `RELEASING.md` is the authoritative Chinese procedure for
+  the downstream TestPyPI/PyPI Trusted Publishing environments and approvals.
 - Vendor-wheel and release workflows must stay repository-identity gated so
   they cannot execute in the public downstream mirror.
-- Portable CI may verify local artifacts but must have read-only repository
-  permission and no artifact upload, package-index upload, tag, or release step.
+- Ordinary portable CI may verify local artifacts but must have read-only
+  repository permission and no artifact upload, package-index upload, tag, or
+  release step. The separate manual `publish-portable.yml` workflow may transfer
+  verified archives for one day and use OIDC only inside the protected
+  `testpypi`/`pypi` publish jobs; it must promote the same bytes through
+  TestPyPI verification before PyPI and must not create tags or releases.
 - The downstream distribution name may change independently of the fixed
   `claude_agent_sdk` import namespace; both names require explicit assertions.
 - Version selection is source-ref authoritative: a higher package-index version
@@ -18,3 +24,5 @@ redistribute the Claude Code executable.
 - Examples must use synthetic prompts and credential-free fixtures.
 - Never paste credentials, environment dumps, transcripts, workspace content,
   downloaded vendor binaries, or generated package artifacts into these docs.
+- Portable wheel/sdist archives and release workflows must reject every
+  JavaScript source map (`*.map`) in addition to vendor executables.

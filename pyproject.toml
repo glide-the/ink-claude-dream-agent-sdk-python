@@ -68,6 +68,7 @@ exclude = [
     # must be supplied separately through the unchanged CLI selection boundary.
     "src/claude_agent_sdk/_bundled/claude",
     "src/claude_agent_sdk/_bundled/claude.exe",
+    "**/*.map",
 ]
 
 [tool.hatch.build.targets.sdist]
@@ -88,6 +89,7 @@ include = [
 exclude = [
     "/src/claude_agent_sdk/_bundled/claude",
     "/src/claude_agent_sdk/_bundled/claude.exe",
+    "/**/*.map",
 ]
 
 [tool.pytest.ini_options]

@@ -15,6 +15,7 @@ on:
       - 'scripts/update_version.py'
       - 'scripts/verify_upstream.py'
       - 'tests/test_packaging_tools.py'
+      - '.github/workflows/publish-portable.yml'
   push:
     branches: ['main', 'codex/sdk-packaging-flow', 'codex/sdk-package-rename']
   workflow_dispatch:
@@ -61,8 +62,8 @@ jobs:
           set -euo pipefail
           python -m zipfile -l dist/reproducible/*.whl > wheel-members.txt
           tar -tzf dist/reproducible/*.tar.gz > sdist-members.txt
-          if grep -E '/_bundled/claude(\.exe)?$' wheel-members.txt sdist-members.txt; then
-            echo '::error::portable archive contains a proprietary Claude Code executable'
+          if grep -E '/_bundled/claude(\.exe)?([[:space:]]|$)|\.map([[:space:]]|$)' wheel-members.txt sdist-members.txt; then
+            echo '::error::portable archive contains a Claude CLI or *.map file'
             exit 1
           fi
 

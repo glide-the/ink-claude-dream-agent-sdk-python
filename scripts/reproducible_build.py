@@ -108,6 +108,11 @@ def _safe_member(name: str) -> bool:
     return not path.is_absolute() and ".." not in path.parts
 
 
+def _contains_source_map(names: list[str]) -> bool:
+    """Return whether an archive member is a JavaScript source map."""
+    return any(PurePosixPath(name).name.endswith(".map") for name in names)
+
+
 def _verify_wheel(path: Path, version: str) -> None:
     """Check the portable wheel shape and absence of a bundled executable."""
     expected_name = f"{DISTRIBUTION_STEM}-{version}-py3-none-any.whl"
@@ -117,6 +122,8 @@ def _verify_wheel(path: Path, version: str) -> None:
         names = archive.namelist()
         if any(not _safe_member(name) for name in names):
             fail(f"wheel contains an unsafe path: {path.name}")
+        if _contains_source_map(names):
+            fail("portable wheel unexpectedly contains a *.map source map")
         if "claude_agent_sdk/__init__.py" not in names:
             fail("wheel does not contain claude_agent_sdk/__init__.py")
         if any(
@@ -144,6 +151,8 @@ def _verify_sdist(path: Path, version: str) -> None:
         names = archive.getnames()
         if any(not _safe_member(name) for name in names):
             fail(f"sdist contains an unsafe path: {path.name}")
+        if _contains_source_map(names):
+            fail("portable sdist unexpectedly contains a *.map source map")
         if any(
             name != expected_root and not name.startswith(f"{expected_root}/")
             for name in names
@@ -164,6 +173,7 @@ def _verify_sdist(path: Path, version: str) -> None:
             "/scripts/reproducible_build.py",
             "/scripts/smoke_installed.py",
             "/scripts/verify_upstream.py",
+            "/scripts/verify_package_index_release.py",
         }
         missing = {
             suffix
@@ -296,6 +306,9 @@ def main() -> None:
     ]
     if executables:
         fail(f"portable build input contains bundled CLI files: {executables}")
+    source_maps = [path for path in _git_inventory() if path.name.endswith(".map")]
+    if source_maps:
+        fail(f"portable build input contains *.map source maps: {source_maps}")
 
     pin = verify_upstream.load_pin()
     verify_upstream.verify_repository(PROJECT_ROOT, pin, require_runtime_unchanged=True)

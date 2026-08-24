@@ -1,0 +1,271 @@
+name: Promote Portable Downstream SDK
+
+# One reviewed byte set must pass TestPyPI and an exact remote-byte comparison
+# before the protected PyPI environment can be approved.
+run-name: Promote ${{ inputs.version }} through TestPyPI to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact pyproject version; run from tag v<version>
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: portable-promotion-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-verify:
+    if: github.repository == 'glide-the/ink-claude-dream-agent-sdk-python'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the reviewed source
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0
+
+      - name: Set up the packaging interpreter
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.x'
+
+      - name: Validate version and immutable release tag
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          project_version=$(python - <<'PY'
+          import pathlib
+          import tomllib
+          print(tomllib.loads(pathlib.Path("pyproject.toml").read_text())["project"]["version"])
+          PY
+          )
+          import_version=$(python - <<'PY'
+          import pathlib
+          import re
+          text = pathlib.Path("src/claude_agent_sdk/_version.py").read_text()
+          match = re.fullmatch(r'__version__ = "([^"]+)"\n?', text)
+          if match is None:
+              raise SystemExit("unexpected _version.py shape")
+          print(match.group(1))
+          PY
+          )
+          test "$RELEASE_VERSION" = "$project_version"
+          test "$RELEASE_VERSION" = "$import_version"
+          test "$GITHUB_REF_TYPE" = "tag"
+          test "$GITHUB_REF_NAME" = "v$RELEASE_VERSION"
+
+      - name: Install hash-locked build dependencies
+        run: |
+          python -m pip install \
+            --only-binary=:all: \
+            --require-hashes \
+            -r packaging/build-requirements.lock
+
+      - name: Prepare isolated archive verification tooling
+        # This network installation happens before the final artifact build and
+        # staging. Twine 7 supports the Metadata-Version 2.5 emitted here.
+        run: |
+          python -m venv /tmp/portable-archive-check
+          /tmp/portable-archive-check/bin/python -m pip install 'twine==7.0.0'
+
+      - name: Verify exact upstream source boundary
+        run: python scripts/verify_upstream.py
+
+      - name: Build and byte-compare wheel and sdist
+        run: python scripts/reproducible_build.py
+
+      - name: Final archive verification
+        run: |
+          set -euo pipefail
+          cd dist/reproducible
+          test "$(find . -maxdepth 1 -type f -name '*.whl' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -type f -name '*.tar.gz' | wc -l)" -eq 1
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum --check SHA256SUMS
+          /tmp/portable-archive-check/bin/python -m twine check --strict \
+            ./*.whl ./*.tar.gz
+          python -m zipfile -l ./*.whl > /tmp/portable-wheel-members.txt
+          tar -tzf ./*.tar.gz > /tmp/portable-sdist-members.txt
+          if grep -E '/_bundled/claude(\.exe)?([[:space:]]|$)|\.map([[:space:]]|$)' \
+            /tmp/portable-wheel-members.txt /tmp/portable-sdist-members.txt; then
+            echo '::error::portable release contains a CLI or *.map file'
+            exit 1
+          fi
+
+      - name: Stage the final verified bytes read-only
+        run: |
+          set -euo pipefail
+          mkdir publish-input
+          cp dist/reproducible/*.whl dist/reproducible/*.tar.gz publish-input/
+          cp dist/reproducible/SHA256SUMS publish-input/
+          (
+            cd publish-input
+            sha256sum --check SHA256SUMS
+            test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          )
+          chmod 0444 publish-input/*
+          chmod 0555 publish-input
+
+      # No package install or mutable shell step may run after read-only staging.
+      - name: Transfer the reviewed bytes to the promotion jobs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: portable-sdk-${{ inputs.version }}
+          path: publish-input/
+          if-no-files-found: error
+          retention-days: 1
+
+  smoke-installed:
+    if: github.repository == 'glide-the/ink-claude-dream-agent-sdk-python'
+    needs: build-and-verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the installed-package smoke harness
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up the smoke interpreter
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.x'
+
+      - name: Download an isolated artifact copy
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: portable-sdk-${{ inputs.version }}
+          path: smoke-input
+
+      - name: Verify the copy before dependency installation
+        run: |
+          set -euo pipefail
+          cd smoke-input
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum --check SHA256SUMS
+          test -z "$(find . -maxdepth 1 -type f -name '*.map' -print -quit)"
+
+      - name: Install and smoke-test only the isolated copy
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/portable-sdk-smoke
+          /tmp/portable-sdk-smoke/bin/python -m pip install smoke-input/*.whl
+          mkdir /tmp/portable-sdk-smoke-bin
+          printf '%s\n' '#!/bin/sh' \
+            'printf "%s\\n" "2.1.241 (portable packaging fixture)"' \
+            > /tmp/portable-sdk-smoke-bin/claude
+          chmod 0755 /tmp/portable-sdk-smoke-bin/claude
+          PATH="/tmp/portable-sdk-smoke-bin:$PATH" \
+            /tmp/portable-sdk-smoke/bin/python scripts/smoke_installed.py \
+              --expected-version "$RELEASE_VERSION" \
+              --official-cli /tmp/portable-sdk-smoke-bin/claude
+
+  publish-testpypi:
+    if: github.repository == 'glide-the/ink-claude-dream-agent-sdk-python'
+    needs: [build-and-verify, smoke-installed]
+    runs-on: ubuntu-24.04
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/ink-claude-dream-agent-sdk/${{ inputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download the reviewed bytes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: portable-sdk-${{ inputs.version }}
+          path: verified-input
+
+      - name: Recheck and isolate TestPyPI archives
+        run: |
+          set -euo pipefail
+          cd verified-input
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum --check SHA256SUMS
+          test -z "$(find . -maxdepth 1 -type f -name '*.map' -print -quit)"
+          mkdir "$GITHUB_WORKSPACE/publish-packages"
+          cp ./*.whl ./*.tar.gz "$GITHUB_WORKSPACE/publish-packages/"
+
+      - name: Publish reviewed bytes to TestPyPI with OIDC
+        # Reviewed release/v1 commit with Twine 7 / Metadata-Version 2.5 support.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          packages-dir: publish-packages/
+          skip-existing: false
+          print-hash: true
+          verbose: true
+          attestations: true
+
+  verify-testpypi:
+    if: github.repository == 'glide-the/ink-claude-dream-agent-sdk-python'
+    needs: publish-testpypi
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the promotion verifier
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - name: Set up the verification interpreter
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12.x'
+
+      - name: Download the original reviewed bytes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: portable-sdk-${{ inputs.version }}
+          path: verified-input
+
+      - name: Verify TestPyPI filenames, metadata digests, and downloaded bytes
+        run: |
+          python scripts/verify_package_index_release.py \
+            --version '${{ inputs.version }}' \
+            --artifacts-dir verified-input \
+            --index-json-base https://test.pypi.org/pypi
+
+  publish-pypi:
+    if: github.repository == 'glide-the/ink-claude-dream-agent-sdk-python'
+    needs: verify-testpypi
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/ink-claude-dream-agent-sdk/${{ inputs.version }}/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download the same TestPyPI-verified bytes
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: portable-sdk-${{ inputs.version }}
+          path: verified-input
+
+      - name: Recheck and isolate PyPI archives
+        run: |
+          set -euo pipefail
+          cd verified-input
+          test "$(find . -maxdepth 1 -type f | wc -l)" -eq 3
+          sha256sum --check SHA256SUMS
+          test -z "$(find . -maxdepth 1 -type f -name '*.map' -print -quit)"
+          mkdir "$GITHUB_WORKSPACE/publish-packages"
+          cp ./*.whl ./*.tar.gz "$GITHUB_WORKSPACE/publish-packages/"
+
+      - name: Publish the promoted bytes to PyPI with OIDC
+        # Reviewed release/v1 commit with Twine 7 / Metadata-Version 2.5 support.
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33
+        with:
+          packages-dir: publish-packages/
+          skip-existing: false
+          print-hash: true
+          verbose: true
+          attestations: true

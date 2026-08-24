@@ -1,7 +1,11 @@
 """Unit checks for downstream provenance, archive, and publication safety."""
 
 import importlib.util
+import io
+import json
 import sys
+import tarfile
+import zipfile
 from pathlib import Path
 from types import ModuleType
 
@@ -22,6 +26,7 @@ def _load_script(name: str) -> ModuleType:
 
 verify_upstream = _load_script("verify_upstream")
 reproducible_build = _load_script("reproducible_build")
+verify_package_index_release = _load_script("verify_package_index_release")
 build_wheel = _load_script("build_wheel")
 update_version = _load_script("update_version")
 
@@ -42,6 +47,31 @@ def test_archive_member_safety_rejects_traversal_and_absolute_paths() -> None:
     assert not reproducible_build._safe_member("../outside")
     assert not reproducible_build._safe_member("root/../../outside")
     assert not reproducible_build._safe_member("/absolute/path")
+
+
+def test_archive_member_safety_rejects_every_source_map() -> None:
+    assert reproducible_build._contains_source_map(["src/runtime.js.map"])
+    assert reproducible_build._contains_source_map(["bundle.map"])
+    assert not reproducible_build._contains_source_map(["map", "runtime.js"])
+
+
+def test_wheel_and_sdist_verifiers_reject_source_maps(tmp_path: Path) -> None:
+    wheel = tmp_path / "ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as archive:
+        archive.writestr("claude_agent_sdk/runtime.js.map", "{}")
+    with pytest.raises(SystemExit, match=r"\*\.map"):
+        reproducible_build._verify_wheel(wheel, "0.2.143")
+
+    sdist = tmp_path / "ink_claude_dream_agent_sdk-0.2.143.tar.gz"
+    with tarfile.open(sdist, "w:gz") as archive:
+        payload = b"{}"
+        member = tarfile.TarInfo(
+            "ink_claude_dream_agent_sdk-0.2.143/src/runtime.js.map"
+        )
+        member.size = len(payload)
+        archive.addfile(member, io.BytesIO(payload))
+    with pytest.raises(SystemExit, match=r"\*\.map"):
+        reproducible_build._verify_sdist(sdist, "0.2.143")
 
 
 def test_vendor_build_and_release_workflows_are_official_repo_only() -> None:
@@ -78,6 +108,112 @@ def test_portable_workflow_cannot_publish() -> None:
         assert forbidden not in workflow
 
 
+def test_downstream_publish_workflow_is_portable_oidc_only() -> None:
+    workflow = (PROJECT_ROOT / ".github/workflows/publish-portable.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert (
+        "github.repository == 'glide-the/ink-claude-dream-agent-sdk-python'" in workflow
+    )
+    assert "python scripts/reproducible_build.py" in workflow
+    assert "twine==7.0.0" in workflow
+    assert "runs-on: ubuntu-24.04" in workflow
+    assert "python-version: '3.12.x'" in workflow
+    assert "-m twine check --strict" in workflow
+    assert "python scripts/smoke_installed.py" in workflow
+    assert "python scripts/verify_package_index_release.py" in workflow
+    assert "environment:\n      name: testpypi" in workflow
+    assert "environment:\n      name: pypi" in workflow
+    assert workflow.count("id-token: write") == 2
+    assert workflow.count("pypa/gh-action-pypi-publish@") == 2
+    assert workflow.count("skip-existing: false") == 2
+    assert workflow.count("attestations: true") == 2
+    assert "repository-url: https://test.pypi.org/legacy/" in workflow
+    assert 'test "$GITHUB_REF_TYPE" = "tag"' in workflow
+    assert 'test "$GITHUB_REF_NAME" = "v$RELEASE_VERSION"' in workflow
+    assert "sha256sum --check SHA256SUMS" in workflow
+    assert "needs: publish-testpypi" in workflow
+    assert "needs: verify-testpypi" in workflow
+    assert "inputs.target" not in workflow
+    assert "*.map" in workflow
+    assert workflow.index("Final archive verification") < workflow.index(
+        "Stage the final verified bytes read-only"
+    )
+    assert "smoke-installed:" in workflow
+    assert "needs: [build-and-verify, smoke-installed]" in workflow
+    assert workflow.index("Transfer the reviewed bytes to the promotion jobs") < (
+        workflow.index("smoke-installed:")
+    )
+    assert workflow.index("smoke-installed:") < workflow.index("publish-testpypi:")
+    assert workflow.index("publish-testpypi:") < workflow.index("verify-testpypi:")
+    assert workflow.index("verify-testpypi:") < workflow.index("publish-pypi:")
+    for forbidden in (
+        "scripts/build_wheel.py",
+        "scripts/download_cli.py",
+        "PYPI_API_TOKEN",
+        "TWINE_PASSWORD",
+        "secrets:",
+        "contents: write",
+        "git push",
+        "gh release",
+    ):
+        assert forbidden not in workflow
+
+
+def test_package_index_promotion_inventory_rejects_source_maps(tmp_path: Path) -> None:
+    (tmp_path / "runtime.js.map").write_text("{}", encoding="utf-8")
+    with pytest.raises(SystemExit, match=r"\*\.map"):
+        verify_package_index_release.load_expected(tmp_path, "0.2.143")
+
+
+def test_package_index_promotion_receipt_requires_exact_remote_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version = "0.2.143"
+    wheel_name = f"ink_claude_dream_agent_sdk-{version}-py3-none-any.whl"
+    sdist_name = f"ink_claude_dream_agent_sdk-{version}.tar.gz"
+    expected: dict[str, str] = {}
+    for name, payload in ((wheel_name, b"wheel"), (sdist_name, b"sdist")):
+        path = tmp_path / name
+        path.write_bytes(payload)
+        expected[name] = verify_package_index_release.sha256(path)
+    (tmp_path / "SHA256SUMS").write_text(
+        "".join(f"{digest}  {name}\n" for name, digest in sorted(expected.items())),
+        encoding="utf-8",
+    )
+    assert verify_package_index_release.load_expected(tmp_path, version) == expected
+
+    payload = {
+        "urls": [
+            {
+                "filename": name,
+                "digests": {"sha256": digest},
+                "url": f"https://test-files.pythonhosted.org/{name}",
+            }
+            for name, digest in sorted(expected.items())
+        ]
+    }
+    monkeypatch.setattr(
+        verify_package_index_release.urllib.request,
+        "urlopen",
+        lambda *args, **kwargs: io.BytesIO(json.dumps(payload).encode()),
+    )
+    monkeypatch.setattr(
+        verify_package_index_release,
+        "_download_digest",
+        lambda url, timeout: expected[url.rsplit("/", 1)[-1]],
+    )
+
+    receipt = verify_package_index_release.verify_once(
+        index_json_base="https://test.pypi.org/pypi",
+        version=version,
+        expected=expected,
+        timeout=1,
+    )
+    assert receipt == expected
+
+
 def test_distribution_name_and_default_build_exclude_vendor_cli() -> None:
     tomllib = pytest.importorskip("tomllib")
     config = tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())
@@ -99,6 +235,8 @@ def test_distribution_name_and_default_build_exclude_vendor_cli() -> None:
     }
     assert expected <= wheel_excludes
     assert expected <= sdist_excludes
+    assert "**/*.map" in wheel_excludes
+    assert "**/*.map" in sdist_excludes
 
 
 def test_vendor_builder_refuses_the_downstream_distribution(
