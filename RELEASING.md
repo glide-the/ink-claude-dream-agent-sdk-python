@@ -17,8 +17,11 @@ Hatch 构建和下游发布工作流只生成 MIT Python 源码的通用 wheel/s
 只在仓库 `glide-the/ink-claude-dream-agent-sdk-python` 中运行：
 
 1. 无 OIDC 写权限的构建 job 从完整 Git 历史检出源码。
-2. 校验输入版本、`pyproject.toml` 和 `_version.py` 完全一致，并且整个提升
-   流程必须从同版本 `v<version>` 标签触发。
+2. 要求显式 `source_ref=v<version>`，并校验该不可变源标签指向当前
+   checkout commit，且输入版本、`pyproject.toml` 和带模块 docstring 的
+   `_version.py` 完全一致。workflow runner 必须也从 tag 触发；常规
+   发布使用同一 `v<version>`，已存在源标签上的 workflow 修复只能使用
+   新的不可变 `v<version>-publish.<n>` runner 标签，不得移动源标签。
 3. 安装哈希锁定的构建工具，执行 `verify_upstream.py` 和
    `reproducible_build.py`，独立构建两次并要求字节级一致。
 4. 执行 SHA-256、`twine check --strict`、归档成员检查，并拒绝 Claude CLI 和
@@ -64,9 +67,9 @@ workflow 内的精确 tag/version、TestPyPI 字节提升和 OIDC 身份校验�
 正式发布前需要复核的外部控制面事项。
 
 Environment 审批是人工发布安全门；YAML 只能声明 Environment 名称，不能替
-仓库管理员建立或审计 required reviewers。当前 Environment 已存在，但
-TestPyPI/PyPI pending Trusted Publisher 尚未登记，项目地址仍为 404，因此不得
-执行发布。
+仓库管理员建立或审计 required reviewers。2026-08-24 首次发布前，
+TestPyPI 和 PyPI 的 pending Trusted Publisher 已按下述精确身份登记；
+正式发布仍必须通过两个 Environment 审批和 workflow 的 OIDC 验证。
 
 ### TestPyPI Trusted Publisher
 
@@ -107,9 +110,13 @@ Workload Identity Federation 配置。
      dist/reproducible/*.tar.gz
    ```
 
-2. 为同一审核提交创建并推送 `v0.2.143` 标签。从该标签手动运行
-   `Promote Portable Downstream SDK`，只输入 `version=0.2.143`；工作流没有
-   可直接选择 PyPI、跳过 TestPyPI 的 target 参数。
+2. 为同一审核提交创建并推送 `v0.2.143` 源标签。从该标签手动运行
+   `Promote Portable Downstream SDK`，输入 `version=0.2.143` 和
+   `source_ref=v0.2.143`；工作流没有可直接选择 PyPI、跳过 TestPyPI 的
+   target 参数。如果不可变源标签中的 workflow 本身存在发布前缺陷，
+   在 `main` 修复并通过 CI 后创建新的 `v0.2.143-publish.1` runner 标签，
+   从该 runner 标签以相同两个输入重跑。构建、smoke 和远端字节校验仍只
+   checkout `source_ref`；禁止删除、移动或 force-update 原源标签。
 3. 批准 `testpypi` Environment。工作流上传同一 artifact 后会自动校验
    TestPyPI 精确文件集合、元数据 SHA-256 和重新下载字节。也可以在等待 PyPI
    审批时额外人工下载验证：

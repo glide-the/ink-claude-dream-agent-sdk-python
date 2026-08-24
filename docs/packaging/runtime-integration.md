@@ -28,7 +28,10 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
 `pypi` Environment 已创建、配置 required reviewer 并只允许 `v*` tag；只有两
 个发布 job 拥有 `id-token: write`。由于当前只有一个仓库 collaborator，暂时允
 许该 reviewer 自审；增加第二位可信 reviewer 后必须启用 prevent-self-review。
-整个流程只接受从 `v<version>` 标签触发。完整步骤以仓库根
+整个流程要求显式的不可变 `source_ref=v<version>`，构建、smoke 和索引校验
+均 checkout 该源标签。workflow 也只能从 tag 触发；如源标签内的 workflow
+需要修复，只能从后续不可变 `v<version>-publish.<n>` runner 标签执行，
+不得移动或删除源标签。完整步骤以仓库根
 目录 [`RELEASING.md`](../../RELEASING.md) 为准。
 
 这一发布能力只覆盖 MIT Python SDK 归档，不覆盖 Anthropic Claude Code 二进制
@@ -53,15 +56,15 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
   `ClaudeAgentOptions(cli_path=...)` 选择 standalone clean-room Runtime，并通过
   本机 loopback Anthropic SSE fixture 完成一轮真实 SDK `query()`。fixture 不访问
   外网、不读取认证配置，也不把 Runtime、transcript 或用户数据打入 wheel。
-- PyPI 与 TestPyPI 的 `ink-claude-dream-agent-sdk` JSON API 当前均返回 `404`，
-  表示尚无公开项目或已发布版本。GitHub 的 `pypi`/`testpypi`
-  Environment 和 required reviewer 已配置，但按发布合同，两个索引的
-  pending Trusted Publisher 仍需在外部控制面登记并复核；该状态没有
-  公开查询接口。本机也没有 Twine 用户名、Token 或 `.pypirc`。
-  当前未创建或推送 `v0.2.143` 标签，未触发发布工作流，也未上传
-  TestPyPI 或 PyPI。正式发布必须在 Trusted Publisher 复核完成后获得用户
-  单独授权，再严格按 [`RELEASING.md`](../../RELEASING.md) 执行；源码合并
-  和本地归档验证都不构成发布授权。
+- PyPI 与 TestPyPI 的 `ink-claude-dream-agent-sdk==0.2.143` JSON API 在首次
+  发布前均返回 `404`。两个索引的 pending Trusted Publisher 已以
+  `glide-the/ink-claude-dream-agent-sdk-python`、`publish-portable.yml` 及各自
+  `testpypi`/`pypi` Environment 精确登记。原审查源标签 `v0.2.143` 指向
+  `6164bd91e43bbf610ec40b4500edec18a97ce665`且保持不变。首次 workflow run
+  `32731772162` 在上传前因 `_version.py` 包含模块 docstring、而旧校验错误要求
+  整个文件只有一行赋值而失败；两个索引均未改变。工作流修复需通过
+  新 runner 标签加载，但发布归档仍必须从原 `source_ref=v0.2.143`
+  重建、校验和提升。
 
 ## Outcome and boundary
 
