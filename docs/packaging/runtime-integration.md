@@ -38,9 +38,10 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
 
 ### 2026-08-24 当前验收状态
 
-- 镜像 `main` 与 `origin/main` 均为 `80478608652b64ddd36bcfc6771e43909e46c904`，
-  默认分支为 `main`；本轮验收在独立分支
-  `codex/sdk-cleanroom-runtime-acceptance` 进行。
+- standalone clean-room Runtime 验收已通过 PR #4 合并到默认分支
+  `main`，对应 merge commit 为
+  `827f079d9fa62e1c1635f395dd0e3f1f812eb7f9`。本文档状态修正不改变
+  该提交已验收的 SDK 源码、公开 API 或 subprocess transport。
 - 上游公开 `main` 仍为
   `542fefb3b94be87760b2513fff889b91bb5b6672`。镜像的 28 个非缓存源码文件与
   该提交逐字节一致，SDK 版本为 `0.2.143`，公开 API 与 subprocess transport
@@ -53,9 +54,14 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
   本机 loopback Anthropic SSE fixture 完成一轮真实 SDK `query()`。fixture 不访问
   外网、不读取认证配置，也不把 Runtime、transcript 或用户数据打入 wheel。
 - PyPI 与 TestPyPI 的 `ink-claude-dream-agent-sdk` JSON API 当前均返回 `404`，
-  表示尚无已发布项目。GitHub 的 `pypi`/`testpypi` Environment 和 required
-  reviewer 已配置；PyPI 侧 pending Trusted Publisher 无公开查询接口，本机也没有
-  Twine 用户名、Token 或 `.pypirc`。因此本轮只生成和验证归档，不上传包。
+  表示尚无公开项目或已发布版本。GitHub 的 `pypi`/`testpypi`
+  Environment 和 required reviewer 已配置，但按发布合同，两个索引的
+  pending Trusted Publisher 仍需在外部控制面登记并复核；该状态没有
+  公开查询接口。本机也没有 Twine 用户名、Token 或 `.pypirc`。
+  当前未创建或推送 `v0.2.143` 标签，未触发发布工作流，也未上传
+  TestPyPI 或 PyPI。正式发布必须在 Trusted Publisher 复核完成后获得用户
+  单独授权，再严格按 [`RELEASING.md`](../../RELEASING.md) 执行；源码合并
+  和本地归档验证都不构成发布授权。
 
 ## Outcome and boundary
 
