@@ -25,8 +25,10 @@ CLI 与任何 `*.map` 后把字节保存为 GitHub artifact。联网安装依赖
 另一个 runner 上只使用下载副本；TestPyPI 发布 job 在两者成功后重新下载原
 artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功后 PyPI 人工
 审批才能提升同一个 artifact，不能选择 target 绕过 TestPyPI。`testpypi` 与
-`pypi` Environment 必须配置 required reviewers；只有两个发布 job 拥有
-`id-token: write`。整个流程只接受从 `v<version>` 标签触发。完整步骤以仓库根
+`pypi` Environment 已创建、配置 required reviewer 并只允许 `v*` tag；只有两
+个发布 job 拥有 `id-token: write`。由于当前只有一个仓库 collaborator，暂时允
+许该 reviewer 自审；增加第二位可信 reviewer 后必须启用 prevent-self-review。
+整个流程只接受从 `v<version>` 标签触发。完整步骤以仓库根
 目录 [`RELEASING.md`](../../RELEASING.md) 为准。
 
 这一发布能力只覆盖 MIT Python SDK 归档，不覆盖 Anthropic Claude Code 二进制
