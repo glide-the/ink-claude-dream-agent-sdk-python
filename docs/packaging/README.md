@@ -8,6 +8,13 @@ redistribute the Claude Code executable.
   runtime-path, and publication-boundary procedure.
 - Vendor-wheel and release workflows must stay repository-identity gated so
   they cannot execute in the public downstream mirror.
+- Portable CI may verify local artifacts but must have read-only repository
+  permission and no artifact upload, package-index upload, tag, or release step.
+- The downstream distribution name may change independently of the fixed
+  `claude_agent_sdk` import namespace; both names require explicit assertions.
+- Version selection is source-ref authoritative: a higher package-index version
+  without a matching upstream Git ref is evidence to review, not an automatic
+  baseline upgrade.
 - Examples must use synthetic prompts and credential-free fixtures.
 - Never paste credentials, environment dumps, transcripts, workspace content,
   downloaded vendor binaries, or generated package artifacts into these docs.

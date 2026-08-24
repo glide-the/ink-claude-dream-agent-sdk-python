@@ -10,6 +10,11 @@ streaming protocol, launcher selection, and `ClaudeAgentOptions(cli_path=...)`
 behavior remain unchanged. No IM DTO, state, transcript, or database logic is
 introduced.
 
+The downstream Python distribution is `ink-claude-dream-agent-sdk`. Python
+imports remain `claude_agent_sdk`; there is no namespace rename or compatibility
+shim. The downstream and official distributions therefore must not be installed
+together in one environment.
+
 The pinned baseline is:
 
 - Upstream: `https://github.com/anthropics/claude-agent-sdk-python.git`
@@ -17,8 +22,20 @@ The pinned baseline is:
 - Commit: `542fefb3b94be87760b2513fff889b91bb5b6672`
 - Tree: `1c86f3a9144616da2a9435f0440066e23a4b580b`
 - SDK version: `0.2.143`
+- Downstream distribution: `ink-claude-dream-agent-sdk`
+- Import namespace: `claude_agent_sdk`
 - Official bundled-CLI pin: `2.1.241`
 - Source license: MIT
+
+Version applicability was rechecked on 2026-08-24. PyPI publishes
+`claude-agent-sdk==0.2.144`, but the official Git `main` branch and latest Git
+tag still identify `0.2.143` at the commit above. The `0.2.144` sdist has the
+same 28-file `src` inventory; its source tree differs only in the version file
+and bundled-CLI pin (`2.1.239`). It has no matching public Git source ref or
+new Runtime-path/build extension point. This mirror therefore remains pinned to
+the auditable Git source baseline `0.2.143` and its newer CLI pin `2.1.241`.
+PyPI's highest version number must not be treated as a source-authoritative
+upgrade until a matching upstream ref and complete provenance review exist.
 
 `packaging/upstream.json` is the machine-readable source of truth. As checked on
 2026-08-23, the mirror remote is public and advertises
@@ -40,6 +57,19 @@ Therefore:
 - Upstream vendor-wheel and PyPI release jobs are repository-identity gated to
   `anthropics/claude-agent-sdk-python`; they must remain skipped in this public
   mirror even when a workflow is manually dispatched or a packaging PR opens.
+- The inherited automated Claude review job is gated to that same official
+  repository because it relies on Anthropic's GitHub App installation and
+  workload-identity variables. Mirror pull requests use the ordinary test,
+  lint, packaging, and provenance checks without impersonating that trust
+  boundary.
+- Inherited real-API E2E, Docker E2E, and example jobs are likewise limited to
+  the official repository's WIF policy. Their skipped mirror status is not a
+  business-test claim; this mirror's installed-package protocol checks and the
+  separately recorded local Dream acceptance remain the applicable evidence.
+- Every job in the inherited manual publish workflow is identity-gated, so a
+  mirror dispatch skips before tests, vendor downloads, upload, tag, or push.
+- The portable-package CI workflow has only `contents: read`, does not upload
+  its ephemeral artifacts, and has no package-index, tag, release, or push step.
 - Keep all generated artifacts local and ignored, even when a package contains
   only MIT source.
 - Do not publish mirror wheels that bundle the official CLI unless Anthropic
@@ -69,6 +99,10 @@ the current `src/` tree and the pinned official commit. `check_upstream_sync.py`
 reports either `sync_status=exact` or a newer linear candidate plus changed-path
 count. It never fetches, merges, or writes either repository.
 
+The unit-test and MCP-floor CI lanes use a full Git checkout because the
+provenance test reads the exact pinned ancestor and its tree. A depth-1 pull
+request checkout is insufficient and must not be used for those lanes.
+
 For a future sync, fetch the official branch into a dedicated review ref in the
 mirror, review the complete old-pin-to-candidate history/tree/license/API diff,
 merge the reviewed commit without rewriting upstream, and then update every
@@ -97,14 +131,26 @@ SHA-256 digests. Verified local output and `SHA256SUMS` go under the ignored
 `dist/reproducible/` directory. `--allow-dirty` is limited to pre-commit local
 verification and is not a release mode.
 
-The unchanged upstream `scripts/build_wheel.py` remains available for official
-platform-wheel engineering. Its network-fetched proprietary CLI output is not
-claimed to be independently reproducible or redistributable by this mirror.
+For `0.2.143`, the builder accepts only these normalized artifact names and
+checks the wheel's `Name`/`Version` metadata plus the sdist root:
+
+```text
+ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
+ink_claude_dream_agent_sdk-0.2.143.tar.gz
+```
+
+Default Hatch wheel and sdist targets explicitly exclude
+`src/claude_agent_sdk/_bundled/claude` and `claude.exe`. The inherited upstream
+`scripts/build_wheel.py` remains as provenance/tooling, but in this renamed
+distribution it exits before downloading or building a vendor wheel. The
+official-repository workflows retain an independent exact repository-identity
+guard.
 
 ## Verify the installed SDK runtime paths
 
 Install the locally generated portable wheel in a fresh environment using the
-normal runtime dependency resolver, then run:
+normal runtime dependency resolver. Ensure Anthropic's `claude-agent-sdk`
+distribution is not co-installed, then run:
 
 ```bash
 python scripts/smoke_installed.py \
@@ -118,8 +164,10 @@ The smoke test re-executes under a temporary empty HOME and an allowlisted
 environment. It invokes the default official CLI and the custom Runtime's
 selected official core only with `--version`; no prompt, credential, model
 request, or transcript reaches either official binary. It verifies that the
-installed SDK's existing default resolution and explicit `cli_path` launch
-command select the expected executables.
+installed metadata resolves as `ink-claude-dream-agent-sdk==0.2.143`, the files
+provide `claude_agent_sdk` without a vendor executable, and the existing default
+resolution and explicit `cli_path` launch command select the expected
+executables.
 
 The end-to-end public `query()` checks target a temporary executable fixture:
 first directly, then through the actual custom Runtime. In the Runtime lane,
@@ -175,12 +223,14 @@ Before handing off source/tooling changes:
 
 1. Run focused tests, Ruff, and mypy for all new scripts.
 2. Confirm two artifact builds have identical names, sizes, and SHA-256 values.
-3. Inspect wheel/sdist member lists and confirm no vendor executable is present.
+3. Confirm wheel `Name`/`Version`, exact wheel/sdist filenames and sdist root,
+   then inspect both member lists and confirm no vendor executable is present.
 4. Install the wheel outside the source tree and run the isolated smoke test.
 5. Run `git status --short --ignored` and `git ls-files dist` to prove every
    artifact is ignored and untracked.
 6. Inspect every vendor-wheel/release workflow and prove its official-repository
-   identity guard remains effective.
+   identity guard remains effective; prove portable CI is read-only and has no
+   artifact/package upload, tag, release, or push step.
 7. Do not commit, tag, push, upload, change the public default branch, or add
    release refs without explicit parent review and any required Anthropic
    authorization.

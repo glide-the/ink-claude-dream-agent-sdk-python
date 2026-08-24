@@ -1,75 +1,58 @@
-# Releasing
+# Releasing the downstream distribution
 
-There are two ways to release the SDK: **automatic** (triggered by a CLI version bump) and **manual** (triggered via GitHub Actions UI).
+The downstream distribution name is `ink-claude-dream-agent-sdk`; the import
+namespace remains `claude_agent_sdk`. Version `0.2.143` is source-compatible
+with the exact upstream pin recorded in `packaging/upstream.json`.
 
-Both flows call the same reusable `build-and-publish.yml` workflow, which builds platform-specific wheels on 5 OS targets, publishes to PyPI, updates version files, generates a changelog entry using Claude, pushes to `main`, and creates a git tag + GitHub Release.
+## Current gate: publication blocked
 
-**Wheel targets:**
+No GitHub Actions job in this public mirror is authorized to publish packages,
+tags, releases, or vendor binaries. The inherited upstream workflows are kept
+for provenance and remain gated to the exact repository identity
+`anthropics/claude-agent-sdk-python`. Their package URLs and vendor-wheel logic
+refer to Anthropic's official `claude-agent-sdk` release, not this downstream
+distribution.
 
-| Runner | Platform tag |
-|---|---|
-| `ubuntu-latest` | `manylinux_2_17_x86_64` |
-| `ubuntu-24.04-arm` | `manylinux_2_17_aarch64` |
-| `macos-latest` | `macosx_11_0_arm64` |
-| `macos-15-intel` | `macosx_11_0_x86_64` |
-| `windows-latest` | `win_amd64` |
+The inherited `scripts/build_wheel.py` also fails before download when the
+project name is not `claude-agent-sdk`. Default Hatch wheel and sdist targets
+exclude `_bundled/claude` and `_bundled/claude.exe` independently of that
+script-level guard.
 
-PRs that touch the build scripts, `pyproject.toml`, or the publish workflow trigger `build-wheel-check.yml`, which dry-runs the full build matrix and verifies each wheel contains the bundled CLI before merge.
+## Required review before a future portable release
 
-## Versioning
+Publication remains fail closed until a separately reviewed change provides
+all of the following:
 
-The project tracks two separate version numbers:
+1. Explicit owner authorization for the target package index and project name.
+2. Trusted publishing or a project-scoped token for
+   `ink-claude-dream-agent-sdk`; never reuse Anthropic release credentials.
+3. A portable-only workflow that runs `scripts/reproducible_build.py`, verifies
+   both archive member lists, checks the exact distribution metadata/name, and
+   rejects every bundled Claude Code executable before upload.
+4. Two byte-identical builds from the reviewed clean commit plus `twine check`.
+5. A fresh-environment installed-wheel smoke using the official CLI path and,
+   when available, the custom Runtime path through `ClaudeAgentOptions.cli_path`.
+6. Confirmation that the `src/` diff from the pinned upstream commit is empty
+   and that public API/state-machine/JSONL transport behavior is unchanged.
+7. A human review of the current Anthropic terms and any authorization needed
+   for distribution naming, trademarks, and executable redistribution.
 
-- **SDK version** — in `pyproject.toml` and `src/claude_agent_sdk/_version.py`
-- **Bundled CLI version** — in `src/claude_agent_sdk/_cli_version.py`
+Until those controls land, generated wheel/sdist files and checksums remain
+local, ignored, and untracked. Do not upload, tag, push, or create release refs.
 
-Both follow semver (`MAJOR.MINOR.PATCH`). Git tags use the format `vX.Y.Z`.
+## Versioning and local artifact contract
 
-## Automatic Release (CLI Version Bump)
+The SDK version remains synchronized in `pyproject.toml` and
+`src/claude_agent_sdk/_version.py`. The upstream CLI pin remains recorded in
+`src/claude_agent_sdk/_cli_version.py` for compatibility/provenance, but it is
+not embedded in this distribution.
 
-This is the most common release path. Every CLI version bump automatically produces a new SDK patch release.
+For version `0.2.143`, the only accepted portable artifact names are:
 
-**Flow:**
-
-1. A commit with message `chore: bump bundled CLI version to X.Y.Z` is pushed to `main`, updating `_cli_version.py`.
-2. The `Test` workflow runs on that push.
-3. On successful completion, `auto-release.yml` fires via `workflow_run`.
-4. It verifies the trigger commit message and that `_cli_version.py` changed.
-5. It reads the current SDK version from `_version.py` and increments the patch number (e.g., `0.1.24` → `0.1.25`).
-6. It calls `build-and-publish.yml`, which builds, publishes, pushes, tags, and creates a GitHub Release.
-
-**Typical commit log after an auto-release:**
+```text
+ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
+ink_claude_dream_agent_sdk-0.2.143.tar.gz
 ```
-ccdf20a chore: bump bundled CLI version to 2.1.25
-baf9bc3 chore: release v0.1.25
-```
 
-## Manual Release
-
-Use this when you need to release with a specific version number (e.g., for minor/major bumps or non-CLI-bump changes).
-
-**Flow:**
-
-1. Go to [**Actions → Publish to PyPI**](https://github.com/anthropics/claude-agent-sdk-python/actions/workflows/publish.yml) and click **Run workflow**.
-2. Enter the desired version (e.g., `0.2.0`).
-3. The workflow runs the full test suite (Python 3.10–3.13) and lint checks.
-4. On success, it calls `build-and-publish.yml`, which builds, publishes, pushes, tags, and creates a GitHub Release.
-
-## Scripts
-
-All release-related scripts live in `scripts/`:
-
-| Script | Purpose |
-|---|---|
-| `update_version.py` | Updates SDK version in `pyproject.toml` and `_version.py` |
-| `update_cli_version.py` | Updates CLI version in `_cli_version.py` |
-| `build_wheel.py` | Downloads the CLI binary, builds the wheel, retags with platform-specific tags |
-| `download_cli.py` | Downloads the Claude Code CLI binary for the current platform |
-
-## Required Secrets
-
-| Secret | Used For |
-|---|---|
-| `PYPI_API_TOKEN` | Publishing to PyPI |
-| `ANTHROPIC_API_KEY` | Changelog generation and e2e tests |
-| `DEPLOY_KEY` | SSH key for direct pushes to `main` |
+The canonical local procedure is
+[`docs/packaging/runtime-integration.md`](docs/packaging/runtime-integration.md).

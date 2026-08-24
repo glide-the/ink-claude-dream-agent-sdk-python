@@ -12,8 +12,12 @@ on:
 
 jobs:
   claude-review:
-    # Skip on forks since they don't have access to secrets
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    # This inherited workflow depends on Anthropic's repository installation
+    # of the Claude Code GitHub App and workload-identity variables. Mirrors
+    # cannot satisfy that trust boundary, even for same-repository PRs.
+    if: >-
+      github.repository == 'anthropics/claude-agent-sdk-python' &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: read

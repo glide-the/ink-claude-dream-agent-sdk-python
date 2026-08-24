@@ -23,6 +23,7 @@ from typing import NoReturn
 
 SANDBOX_MARKER = "CLAUDE_SDK_PACKAGING_SMOKE_SANDBOXED"
 FIXED_PROMPT = "packaging-smoke-nonsecret"
+DISTRIBUTION_NAME = "ink-claude-dream-agent-sdk"
 
 
 def fail(message: str) -> NoReturn:
@@ -217,8 +218,29 @@ def _run_sandboxed(
     custom_runtime_core: Path | None,
 ) -> None:
     """Validate the installed distribution and both supported CLI selections."""
-    if importlib.metadata.version("claude-agent-sdk") != expected_version:
+    distribution = importlib.metadata.distribution(DISTRIBUTION_NAME)
+    if distribution.version != expected_version:
         fail("installed distribution version does not match --expected-version")
+    try:
+        conflicting_version = importlib.metadata.version("claude-agent-sdk")
+    except importlib.metadata.PackageNotFoundError:
+        pass
+    else:
+        fail(
+            "official and downstream distributions share the claude_agent_sdk "
+            f"namespace; remove claude-agent-sdk {conflicting_version}"
+        )
+    installed_files = distribution.files
+    if installed_files is None or not any(
+        str(path) == "claude_agent_sdk/__init__.py" for path in installed_files
+    ):
+        fail("installed distribution does not provide claude_agent_sdk/__init__.py")
+    if any(
+        str(path).endswith("/_bundled/claude")
+        or str(path).endswith("/_bundled/claude.exe")
+        for path in installed_files
+    ):
+        fail("installed distribution unexpectedly contains a Claude CLI executable")
 
     from claude_agent_sdk import ClaudeAgentOptions
     from claude_agent_sdk._internal.transport.subprocess_cli import (
@@ -262,6 +284,7 @@ def _run_sandboxed(
         )
 
     print(f"installed_sdk_version={expected_version}")
+    print(f"installed_distribution={DISTRIBUTION_NAME}")
     print(f"official_cli={official_cli}")
     print(f"official_cli_version={version_line[0]}")
     print("default_cli_resolution=official")
