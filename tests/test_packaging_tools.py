@@ -169,12 +169,10 @@ def test_downstream_publish_workflow_is_portable_oidc_only() -> None:
 
 
 def test_publish_workflow_version_parser_accepts_module_docstring() -> None:
-    version_source = (
-        PROJECT_ROOT / "src/claude_agent_sdk/_version.py"
-    ).read_text(encoding="utf-8")
-    matches = re.findall(
-        r'^__version__ = "([^"]+)"$', version_source, re.MULTILINE
+    version_source = (PROJECT_ROOT / "src/claude_agent_sdk/_version.py").read_text(
+        encoding="utf-8"
     )
+    matches = re.findall(r'^__version__ = "([^"]+)"$', version_source, re.MULTILINE)
     assert matches == ["0.2.143"]
 
     workflow = (PROJECT_ROOT / ".github/workflows/publish-portable.yml").read_text(
