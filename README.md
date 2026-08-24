@@ -334,15 +334,20 @@ wheel/sdist, repeat-build verification, and isolated official/custom CLI path
 smoke tests, see
 [`docs/packaging/runtime-integration.md`](docs/packaging/runtime-integration.md).
 The downstream procedure does not authorize redistribution of the proprietary
-Claude Code binary; generated artifacts remain local, ignored, and untracked.
+Claude Code binary. Local artifacts remain ignored and untracked; reviewed SDK
+archives leave CI only through the protected promotion workflow below.
 
 ### Release policy
 
-No downstream package publication is authorized or configured. The inherited
-vendor-wheel and PyPI workflows are repository-identity gated to
-`anthropics/claude-agent-sdk-python`; in this public mirror they skip before any
-vendor download or upload. See [`RELEASING.md`](RELEASING.md) for the review
-gate that must be satisfied before any future portable publication.
+The downstream portable-SDK promotion workflow is configured to publish one
+reviewed wheel/sdist byte set to TestPyPI, verify the published bytes, and only
+then enter the protected PyPI approval environment. Repository administrators
+must still configure both Trusted Publishers and required reviewers before the
+workflow is usable. The inherited vendor-wheel and official PyPI workflows stay
+repository-identity gated to `anthropics/claude-agent-sdk-python`; they skip in
+this mirror. See [`RELEASING.md`](RELEASING.md) for the Chinese authoritative
+release procedure. Neither release path permits a Claude CLI or `*.map` file in
+the downstream Python archives.
 
 ## License and terms
 

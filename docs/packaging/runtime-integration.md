@@ -1,5 +1,39 @@
 # Claude Agent SDK mirror packaging and runtime integration
 
+## 中文权威发布与 Runtime 集成合同
+
+本镜像的 Python 发行名是 `ink-claude-dream-agent-sdk`，安装后的导入名仍为
+`claude_agent_sdk`。这不是仍在使用官方 distribution：Python 的包索引发行名
+和 import namespace 本来就是两个独立合同。由于两个发行包提供同一个 import
+namespace，官方 `claude-agent-sdk` 与本镜像不得共存于同一环境。
+
+本仓库只发布不含 Claude Code CLI 的 Python wheel/sdist。CLI 或精简 Runtime
+必须独立安装，SDK 继续复用上游的 `ClaudeAgentOptions(cli_path=...)`、默认
+`PATH` 解析和 subprocess transport，不增加 Dream DTO、第二套 Agent 状态机
+或协议分叉。Dream 最终运行关系是：
+
+```text
+ink-claude-dream-agent-sdk (PyPI / Python import: claude_agent_sdk)
+    -> ClaudeAgentOptions.cli_path 或 PATH
+    -> 独立安装的 official/custom Claude Runtime
+    -> 既有 JSONL、streaming、tool、MCP、resume 合同
+```
+
+`.github/workflows/publish-portable.yml` 是镜像唯一发布入口。构建 job 执行上游
+精确来源校验、两次可复现构建、SHA-256、严格归档检查和 `twine check`，拒绝
+CLI 与任何 `*.map` 后把字节保存为 GitHub artifact。联网安装依赖的 smoke 在
+另一个 runner 上只使用下载副本；TestPyPI 发布 job 在两者成功后重新下载原
+artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功后 PyPI 人工
+审批才能提升同一个 artifact，不能选择 target 绕过 TestPyPI。`testpypi` 与
+`pypi` Environment 必须配置 required reviewers；只有两个发布 job 拥有
+`id-token: write`。整个流程只接受从 `v<version>` 标签触发。完整步骤以仓库根
+目录 [`RELEASING.md`](../../RELEASING.md) 为准。
+
+这一发布能力只覆盖 MIT Python SDK 归档，不覆盖 Anthropic Claude Code 二进制
+或恢复源码的再分发。CLI、transcript、Workspace、插件物化数据和 MCP/OAuth
+凭据均不得进入 Python 包。继承的 Anthropic 官方发布工作流继续严格锁定官方
+仓库身份，不得启用、改写或借用其发布凭据。
+
 ## Outcome and boundary
 
 This public mirror tracks the official MIT-licensed Python source at an exact
@@ -52,8 +86,10 @@ independent redistribution grant for republishing it from this mirror.
 
 Therefore:
 
-- Never commit or push `dist/`, wheel/sdist files, installer downloads, or a
-  Claude Code executable.
+- Never commit `dist/`, wheel/sdist files, installer downloads, or a Claude
+  Code executable. Reviewed portable wheel/sdist bytes may leave CI only
+  through `.github/workflows/publish-portable.yml`; that workflow transfers
+  them as a one-day artifact and publishes them to the selected package index.
 - Upstream vendor-wheel and PyPI release jobs are repository-identity gated to
   `anthropics/claude-agent-sdk-python`; they must remain skipped in this public
   mirror even when a workflow is manually dispatched or a packaging PR opens.
@@ -68,19 +104,23 @@ Therefore:
   separately recorded local Dream acceptance remain the applicable evidence.
 - Every job in the inherited manual publish workflow is identity-gated, so a
   mirror dispatch skips before tests, vendor downloads, upload, tag, or push.
-- The portable-package CI workflow has only `contents: read`, does not upload
-  its ephemeral artifacts, and has no package-index, tag, release, or push step.
-- Keep all generated artifacts local and ignored, even when a package contains
-  only MIT source.
+- The ordinary portable-package CI workflow has only `contents: read`, does not
+  upload its ephemeral artifacts, and has no package-index, tag, release, or
+  push step. The separate manual publish workflow grants `id-token: write` only
+  to its protected `testpypi` and `pypi` environment jobs.
+- Keep locally generated artifacts ignored and untracked. Package-index upload
+  is allowed only for the reviewed portable SDK archives through the protected
+  downstream workflow after Trusted Publisher and reviewer configuration.
 - Do not publish mirror wheels that bundle the official CLI unless Anthropic
   gives explicit authorization covering that redistribution.
-- Treat public binary/package publication as blocked pending that authorization.
-- Source, provenance records, documentation, and build/verification tools are
-  the only publishable outputs of this work.
+- Treat Claude Code binary publication as blocked pending explicit
+  redistribution authorization. That binary restriction does not turn the
+  separately verified MIT Python source archives into vendor-binary wheels.
 
 The local portable build below excludes the vendor executable and validates
-that exclusion by inspecting archive members. This reduces risk but does not
-change the no-artifact-commit/no-artifact-push rule.
+that exclusion by inspecting archive members. Generated archives remain
+untracked; release publication uses only the protected workflow described in
+the Chinese contract and `RELEASING.md`.
 
 ## Verify and inspect upstream sync
 
@@ -229,8 +269,10 @@ Before handing off source/tooling changes:
 5. Run `git status --short --ignored` and `git ls-files dist` to prove every
    artifact is ignored and untracked.
 6. Inspect every vendor-wheel/release workflow and prove its official-repository
-   identity guard remains effective; prove portable CI is read-only and has no
-   artifact/package upload, tag, release, or push step.
-7. Do not commit, tag, push, upload, change the public default branch, or add
-   release refs without explicit parent review and any required Anthropic
-   authorization.
+   identity guard remains effective; prove ordinary portable CI is read-only.
+   Separately verify the downstream publish workflow has OIDC only in protected
+   publish jobs and never invokes the vendor builder.
+7. Do not commit generated archives. Do not create a production tag or approve
+   package upload until source review, TestPyPI validation, GitHub Environment
+   reviewer policy, Trusted Publisher identity, and applicable naming/license
+   review are complete.
