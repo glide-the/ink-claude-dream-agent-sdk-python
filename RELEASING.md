@@ -49,15 +49,24 @@ Hatch 构建和下游发布工作流只生成 MIT Python 源码的通用 wheel/s
 
 ### GitHub Environments
 
-创建名称严格匹配的两个 Environment：
+当前仓库已经创建名称严格匹配的两个 Environment，并把 deployment ref 限制为
+`v*` tag：
 
-- `testpypi`：配置 required reviewers、禁止触发者自审，并只允许受保护的
-  `v*` 发布标签。
-- `pypi`：配置 required reviewers、禁止触发者自审，并把 deployment branch/
-  tag policy 限制到受保护的 `v*` 发布标签。
+- `testpypi`：required reviewer 为当前唯一管理员 `glide-the`，只允许 `v*`
+  发布标签。
+- `pypi`：required reviewer 为当前唯一管理员 `glide-the`，只允许 `v*`
+  发布标签。
+
+因为仓库当前只有一个 collaborator，GitHub 暂时无法同时实现“必须人工审批”
+和“禁止触发者自审”；现配置选择保留人工审批且 `prevent_self_review=false`。
+增加第二位可信 reviewer 后，必须立即切换为禁止触发者自审。此限制不影响
+workflow 内的精确 tag/version、TestPyPI 字节提升和 OIDC 身份校验，但属于首次
+正式发布前需要复核的外部控制面事项。
 
 Environment 审批是人工发布安全门；YAML 只能声明 Environment 名称，不能替
-仓库管理员自动建立 required reviewers。没有完成该设置时不得执行发布。
+仓库管理员建立或审计 required reviewers。当前 Environment 已存在，但
+TestPyPI/PyPI pending Trusted Publisher 尚未登记，项目地址仍为 404，因此不得
+执行发布。
 
 ### TestPyPI Trusted Publisher
 
