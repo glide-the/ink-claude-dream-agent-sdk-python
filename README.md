@@ -1,7 +1,8 @@
 # Ink Claude Dream Agent SDK for Python
 
 Portable downstream distribution of the MIT-licensed Claude Agent SDK Python
-source pinned to upstream `0.2.143`. It preserves the `claude_agent_sdk` import
+source pinned to upstream `0.2.143`, published as downstream release `0.2.144`.
+It preserves the `claude_agent_sdk` import
 namespace and public API while intentionally excluding the proprietary Claude
 Code executable. See the [official Claude Agent SDK documentation](https://platform.claude.com/docs/en/agent-sdk/python)
 for SDK usage.
@@ -318,8 +319,8 @@ Use the pinned, reproducible source-only build documented in
 The resulting artifact names are:
 
 ```bash
-ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
-ink_claude_dream_agent_sdk-0.2.143.tar.gz
+ink_claude_dream_agent_sdk-0.2.144-py3-none-any.whl
+ink_claude_dream_agent_sdk-0.2.144.tar.gz
 ```
 
 Default Hatch wheel and sdist targets explicitly exclude

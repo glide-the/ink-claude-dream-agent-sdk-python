@@ -10,6 +10,11 @@ Hatch 构建和下游发布工作流只生成 MIT Python 源码的通用 wheel/s
 独立 Runtime 安装，并通过上游已有的 `ClaudeAgentOptions.cli_path` 或默认
 `PATH` 解析接入；不得放入本 Python 包。
 
+当前下游发行版本为 `0.2.144`。`packaging/upstream.json` 分开记录不可变的
+上游源码版本与下游发行版本；`verify_upstream.py` 只允许
+`src/claude_agent_sdk/_version.py` 的单行版本赋值与上游基线不同，其余
+`src/` 字节必须继续完全一致。
+
 ## 发布工作流与信任边界
 
 下游唯一允许的包索引发布入口是
@@ -110,11 +115,11 @@ Workload Identity Federation 配置。
      dist/reproducible/*.tar.gz
    ```
 
-2. 为同一审核提交创建并推送 `v0.2.143` 源标签。从该标签手动运行
-   `Promote Portable Downstream SDK`，输入 `version=0.2.143` 和
-   `source_ref=v0.2.143`；工作流没有可直接选择 PyPI、跳过 TestPyPI 的
+2. 为同一审核提交创建并推送 `v0.2.144` 源标签。从该标签手动运行
+   `Promote Portable Downstream SDK`，输入 `version=0.2.144` 和
+   `source_ref=v0.2.144`；工作流没有可直接选择 PyPI、跳过 TestPyPI 的
    target 参数。如果不可变源标签中的 workflow 本身存在发布前缺陷，
-   在 `main` 修复并通过 CI 后创建新的 `v0.2.143-publish.1` runner 标签，
+   在 `main` 修复并通过 CI 后创建新的 `v0.2.144-publish.1` runner 标签，
    从该 runner 标签以相同两个输入重跑。构建、smoke 和远端字节校验仍只
    checkout `source_ref`；禁止删除、移动或 force-update 原源标签。
 3. 批准 `testpypi` Environment。工作流上传同一 artifact 后会自动校验
@@ -124,8 +129,8 @@ Workload Identity Federation 配置。
    ```bash
    python -m pip download --no-deps \
      --index-url https://test.pypi.org/simple/ \
-     'ink-claude-dream-agent-sdk==0.2.143'
-   python -m pip install ./ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
+     'ink-claude-dream-agent-sdk==0.2.144'
+   python -m pip install ./ink_claude_dream_agent_sdk-0.2.144-py3-none-any.whl
    python -c 'import claude_agent_sdk; print(claude_agent_sdk.__version__)'
    ```
 
@@ -152,11 +157,11 @@ Workload Identity Federation 配置。
 - 公开项目前仍需仓库所有者确认项目名称、商标和当前发布条款；这不授权发布
   或修改 Claude Code 二进制。
 
-当前合法的 `0.2.143` 便携产物名只能是：
+当前合法的 `0.2.144` 便携产物名只能是：
 
 ```text
-ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
-ink_claude_dream_agent_sdk-0.2.143.tar.gz
+ink_claude_dream_agent_sdk-0.2.144-py3-none-any.whl
+ink_claude_dream_agent_sdk-0.2.144.tar.gz
 ```
 
 构建、安装 smoke、CLI path 和 Runtime 合同详见

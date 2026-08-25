@@ -2,7 +2,8 @@
 
 This folder contains inputs, never generated artifacts.
 
-- `upstream.json` is the reviewed official source/version provenance pin.
+- `upstream.json` is the reviewed official source/version provenance pin and
+  the distinct downstream distribution version declaration.
 - `build-requirements.lock` is the hash-locked Python 3.12 builder toolchain.
 - Wheel, sdist, checksum, downloaded installer, and Claude Code binary files
   must not be added here or committed anywhere in this public mirror.

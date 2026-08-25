@@ -320,7 +320,7 @@ def main() -> None:
             _build_once(
                 args.python.absolute(),
                 pin.source_date_epoch,
-                pin.sdk_version,
+                pin.downstream_version,
                 work_root,
                 sequence,
             )
