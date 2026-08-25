@@ -37,8 +37,17 @@ def test_upstream_manifest_matches_source_and_runtime() -> None:
 
     assert pin.commit == "542fefb3b94be87760b2513fff889b91bb5b6672"
     assert pin.sdk_version == "0.2.143"
+    assert pin.downstream_version == "0.2.144"
     assert pin.bundled_cli_version == "2.1.241"
     verify_upstream.verify_repository(PROJECT_ROOT, pin, require_runtime_unchanged=True)
+
+
+def test_reproducible_build_uses_declared_downstream_version() -> None:
+    source = (PROJECT_ROOT / "scripts/reproducible_build.py").read_text(
+        encoding="utf-8"
+    )
+    assert "pin.downstream_version" in source
+    assert "pin.sdk_version," not in source
 
 
 def test_archive_member_safety_rejects_traversal_and_absolute_paths() -> None:
@@ -173,7 +182,7 @@ def test_publish_workflow_version_parser_accepts_module_docstring() -> None:
         encoding="utf-8"
     )
     matches = re.findall(r'^__version__ = "([^"]+)"$', version_source, re.MULTILINE)
-    assert matches == ["0.2.143"]
+    assert matches == ["0.2.144"]
 
     workflow = (PROJECT_ROOT / ".github/workflows/publish-portable.yml").read_text(
         encoding="utf-8"

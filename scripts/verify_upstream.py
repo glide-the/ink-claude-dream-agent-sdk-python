@@ -35,6 +35,7 @@ class UpstreamPin:
     tree: str
     source_date_epoch: int
     sdk_version: str
+    downstream_version: str
     bundled_cli_version: str
     license: str
 
@@ -67,6 +68,7 @@ def load_pin(path: Path = DEFAULT_MANIFEST) -> UpstreamPin:
     tree = _required(raw, "tree", str)
     source_date_epoch = _required(raw, "source_date_epoch", int)
     sdk_version = _required(raw, "sdk_version", str)
+    downstream_version = _required(raw, "downstream_version", str)
     cli_version = _required(raw, "bundled_cli_version", str)
     license_name = _required(raw, "license", str)
 
@@ -86,6 +88,8 @@ def load_pin(path: Path = DEFAULT_MANIFEST) -> UpstreamPin:
         fail("source_date_epoch must be positive")
     if SEMVER_RE.fullmatch(sdk_version) is None:
         fail("sdk_version must be a concrete semantic version")
+    if SEMVER_RE.fullmatch(downstream_version) is None:
+        fail("downstream_version must be a concrete semantic version")
     if SEMVER_RE.fullmatch(cli_version) is None:
         fail("bundled_cli_version must be a concrete semantic version")
     if license_name != "MIT":
@@ -99,6 +103,7 @@ def load_pin(path: Path = DEFAULT_MANIFEST) -> UpstreamPin:
         tree=tree,
         source_date_epoch=source_date_epoch,
         sdk_version=sdk_version,
+        downstream_version=downstream_version,
         bundled_cli_version=cli_version,
         license=license_name,
     )
@@ -201,10 +206,18 @@ def verify_repository(
         if ancestor.returncode != 0:
             fail(f"pinned upstream commit {pin.commit} is not an ancestor of HEAD")
         runtime_diff = git(
-            repository, "diff", "--quiet", pin.commit, "--", "src", check=False
+            repository, "diff", "--name-only", pin.commit, "--", "src"
+        ).stdout.splitlines()
+        expected_runtime_diff = (
+            ["src/claude_agent_sdk/_version.py"]
+            if pin.downstream_version != pin.sdk_version
+            else []
         )
-        if runtime_diff.returncode != 0:
-            fail("src/ differs from the pinned upstream commit")
+        if runtime_diff != expected_runtime_diff:
+            fail(
+                "src/ differs from the pinned upstream commit outside the "
+                "declared downstream version file"
+            )
         untracked_runtime = git(
             repository,
             "ls-files",
@@ -240,8 +253,23 @@ def verify_repository(
             "name",
             "working tree pyproject.toml",
         )
-        if {current_sdk, current_pyproject} != {pin.sdk_version}:
-            fail("working tree SDK versions do not match upstream.json")
+        if {current_sdk, current_pyproject} != {pin.downstream_version}:
+            fail("working tree SDK versions do not match downstream_version")
+        pinned_version_source = _read_commit_file(
+            repository, pin.commit, "src/claude_agent_sdk/_version.py"
+        )
+        current_version_source = (
+            repository / "src/claude_agent_sdk/_version.py"
+        ).read_text(encoding="utf-8")
+        normalized_version_source, replacements = re.subn(
+            rf'^__version__ = "{re.escape(pin.downstream_version)}"$',
+            f'__version__ = "{pin.sdk_version}"',
+            current_version_source,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        if replacements != 1 or normalized_version_source != pinned_version_source:
+            fail("downstream _version.py contains changes beyond the declared version")
         if current_cli != pin.bundled_cli_version:
             fail("working tree CLI version does not match upstream.json")
         if current_distribution != DOWNSTREAM_DISTRIBUTION_NAME:
@@ -294,6 +322,7 @@ def main() -> None:
     print(f"upstream_commit={pin.commit}")
     print(f"upstream_tree={pin.tree}")
     print(f"sdk_version={pin.sdk_version}")
+    print(f"downstream_version={pin.downstream_version}")
     print(f"bundled_cli_version={pin.bundled_cli_version}")
 
     if args.reference_repo is not None:
