@@ -6,7 +6,7 @@
   "tree": "1c86f3a9144616da2a9435f0440066e23a4b580b",
   "source_date_epoch": 1787446381,
   "sdk_version": "0.2.143",
-  "downstream_version": "0.2.144",
+  "downstream_version": "0.2.145",
   "bundled_cli_version": "2.1.241",
   "license": "MIT"
 }
