@@ -27,7 +27,7 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
 审批才能提升同一个 artifact，不能选择 target 绕过 TestPyPI。`testpypi` 与
 `pypi` Environment 已创建、配置 required reviewer 并只允许 `v*` tag；只有两
 个发布 job 拥有 `id-token: write`。由于当前只有一个仓库 collaborator，暂时允
-许该 reviewer 自审；增加第二位可信 reviewer 后必须启用 prevent-self-review。
+许该 reviewer 自审；增加第二位具有 Environment 审批权限的 reviewer 后必须启用 prevent-self-review。
 整个流程要求显式的不可变 `source_ref=v<version>`，构建、smoke 和索引校验
 均 checkout 该源标签。workflow 也只能从 tag 触发；如源标签内的 workflow
 需要修复，只能从后续不可变 `v<version>-publish.<n>` runner 标签执行，
@@ -35,36 +35,21 @@ artifact。随后机器重新下载 TestPyPI 文件并逐一比对 SHA，成功�
 目录 [`RELEASING.md`](../../RELEASING.md) 为准。
 
 这一发布能力只覆盖 MIT Python SDK 归档，不覆盖 Anthropic Claude Code 二进制
-或恢复源码的再分发。CLI、transcript、Workspace、插件物化数据和 MCP/OAuth
+或恢复源码的再分发。CLI、transcript、Workspace、生成的插件文件和 MCP/OAuth
 凭据均不得进入 Python 包。继承的 Anthropic 官方发布工作流继续严格锁定官方
 仓库身份，不得启用、改写或借用其发布凭据。
 
-### 2026-08-24 当前验收状态
+### 当前源码与 Runtime 验证合同
 
-- standalone clean-room Runtime 验收已通过 PR #4 合并到默认分支
-  `main`，对应 merge commit 为
-  `827f079d9fa62e1c1635f395dd0e3f1f812eb7f9`。本文档状态修正不改变
-  该提交已验收的 SDK 源码、公开 API 或 subprocess transport。
-- 上游公开 `main` 仍为
-  `542fefb3b94be87760b2513fff889b91bb5b6672`。镜像的 28 个非缓存源码文件与
-  该提交逐字节一致，SDK 版本为 `0.2.143`，公开 API 与 subprocess transport
-  没有下游分叉。
-- 当前本机 `PATH` 选中的官方 Claude CLI 是 `2.1.220`；本轮 standalone
-  clean-room Runtime 候选报告 `2.1.241`。这两个值分别表示实际默认路径和
-  Runtime 兼容版本，不得混写成同一个“当前 CLI”。
-- 隔离安装验收必须同时证明：默认 SDK 路径选择实际 official CLI；显式
-  `ClaudeAgentOptions(cli_path=...)` 选择 standalone clean-room Runtime，并通过
-  本机 loopback Anthropic SSE fixture 完成一轮真实 SDK `query()`。fixture 不访问
-  外网、不读取认证配置，也不把 Runtime、transcript 或用户数据打入 wheel。
-- PyPI 与 TestPyPI 的 `ink-claude-dream-agent-sdk==0.2.143` JSON API 在首次
-  发布前均返回 `404`。两个索引的 pending Trusted Publisher 已以
-  `glide-the/ink-claude-dream-agent-sdk-python`、`publish-portable.yml` 及各自
-  `testpypi`/`pypi` Environment 精确登记。原审查源标签 `v0.2.143` 指向
-  `6164bd91e43bbf610ec40b4500edec18a97ce665`且保持不变。首次 workflow run
-  `32731772162` 在上传前因 `_version.py` 包含模块 docstring、而旧校验错误要求
-  整个文件只有一行赋值而失败；两个索引均未改变。工作流修复需通过
-  新 runner 标签加载，但发布归档仍必须从原 `source_ref=v0.2.143`
-  重建、校验和提升。
+- 下游发行版本为 `0.2.145`，上游源码基线为 `0.2.143`；commit/tree 与
+  版本分别读取 `packaging/upstream.json`，不要混写来源版本和发行版本。
+- Dream 独立安装 Runtime `0.1.9`，CLI compatibility 为 `2.1.241`；SDK
+  仍只通过公开 `cli_path`/PATH 与 subprocess transport 启动 executable。
+- 安装验证分别检查默认 CLI 解析与显式 Runtime 路径。loopback SSE fixture
+  验证实际 SDK `query()` 协议，不访问外部模型、不读取认证配置，不代替正常
+  Dream 的完整业务验收。
+- 发布使用本次发行的不可变 source tag；workflow、Environment 审批和同一字节
+  TestPyPI→PyPI 规则以 `RELEASING.md` 为准。旧版本状态不构成当前发布证据。
 
 ## Outcome and boundary
 
@@ -165,10 +150,13 @@ python scripts/check_upstream_sync.py \
 ```
 
 `verify_upstream.py` checks the full commit and tree identifiers, commit epoch,
-MIT license file digest, SDK/CLI versions, ancestry, and an empty diff between
-the current `src/` tree and the pinned official commit. `check_upstream_sync.py`
-reports either `sync_status=exact` or a newer linear candidate plus changed-path
-count. It never fetches, merges, or writes either repository.
+MIT license file digest, SDK/CLI versions and ancestry. The only allowed `src/`
+difference is the declared downstream version assignment in `_version.py`;
+all other source content must match the pinned official commit.
+`check_upstream_sync.py` reports `sync_status=exact` when the upstream candidate
+commit equals the pin, or a newer linear candidate plus changed-path count.
+That status describes the upstream pin, not an unrestricted working-tree diff.
+Neither command fetches, merges or writes either repository.
 
 The unit-test and MCP-floor CI lanes use a full Git checkout because the
 provenance test reads the exact pinned ancestor and its tree. A depth-1 pull
@@ -202,12 +190,12 @@ SHA-256 digests. Verified local output and `SHA256SUMS` go under the ignored
 `dist/reproducible/` directory. `--allow-dirty` is limited to pre-commit local
 verification and is not a release mode.
 
-For `0.2.143`, the builder accepts only these normalized artifact names and
+For downstream `0.2.145`, the builder accepts only these normalized artifact names and
 checks the wheel's `Name`/`Version` metadata plus the sdist root:
 
 ```text
-ink_claude_dream_agent_sdk-0.2.143-py3-none-any.whl
-ink_claude_dream_agent_sdk-0.2.143.tar.gz
+ink_claude_dream_agent_sdk-0.2.145-py3-none-any.whl
+ink_claude_dream_agent_sdk-0.2.145.tar.gz
 ```
 
 Default Hatch wheel and sdist targets explicitly exclude
@@ -224,13 +212,13 @@ guard.
 
 ```bash
 python scripts/smoke_installed.py \
-  --expected-version 0.2.143 \
+  --expected-version 0.2.145 \
   --official-cli /absolute/path/to/default/claude \
-  --custom-runtime /absolute/path/to/standalone-clean-room-claude
+  --custom-runtime /absolute/path/to/ink-claude-code-dream
 ```
 
 smoke 工具会在规范化后的临时空 `HOME` 和环境变量白名单中重新执行。它检查已
-安装 metadata 只存在 `ink-claude-dream-agent-sdk==0.2.143`，安装文件提供
+安装 metadata 只存在 `ink-claude-dream-agent-sdk==0.2.145`，安装文件提供
 `claude_agent_sdk` 且不含 vendor CLI；随后验证默认解析与显式 `cli_path` 分别指向
 预期 executable。官方 CLI 只执行 `--version`，不会收到 prompt。
 
@@ -249,7 +237,7 @@ existing actor and Deck passed twice: first with the unmodified official Claude
 Code `2.1.241` executable selected directly, then with the historical envelope
 Runtime selected through the existing CLI-path injection point and supervising
 that same official executable. This historical result does not qualify the new
-standalone clean-room Runtime or replace a new Dream business acceptance.
+standalone Runtime built from different source bytes or replace a new Dream business acceptance.
 
 Each lane passed new session, first-token/SSE, multi-turn continuation, internal
 stdio MCP tool/result, workspace, transcript, resume, locked-plugin loading,
@@ -260,8 +248,9 @@ generated business artifact is copied into this public mirror.
 
 This acceptance used Dream's current SDK `0.2.140`; it proves compatibility of
 the upstream CLI-path/process boundary, not a Dream dependency upgrade to this
-mirror's pinned `0.2.143`. Installed `0.2.143` wheel/sdist smoke and public
-`query()` boundary tests are covered separately above.
+mirror's then-pinned upstream `0.2.143`. That historical business receipt is
+not evidence of the current downstream `0.2.145` installation; current wheel/sdist
+smoke and public `query()` boundary requirements are specified separately above.
 
 A later lane configured a disposable external provider built with the official
 MCP Python SDK `2.0.0` through Dream's public MCP API. The same existing actor

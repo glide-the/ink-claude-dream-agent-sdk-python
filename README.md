@@ -1,4 +1,12 @@
+<!-- [Input] Portable downstream SDK, public API and repository maintenance contracts. -->
+<!-- [Output] SDK installation, usage and links to governance and release procedures. -->
+<!-- [Pos] Public repository entry guide; AGENTS.md owns agent maintenance rules. -->
+<!-- [Sync] 2026-09-13: link root governance without changing SDK behavior or package versions. -->
+
 # Ink Claude Dream Agent SDK for Python
+
+Repository maintenance rules: [AGENTS.md](AGENTS.md) and the
+[root folder contract](.folder.md); release operations follow [RELEASING.md](RELEASING.md).
 
 Portable downstream distribution of the MIT-licensed Claude Agent SDK Python
 source pinned to upstream `0.2.143`, published as downstream release `0.2.145`.

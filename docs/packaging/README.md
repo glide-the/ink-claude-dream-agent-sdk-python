@@ -27,7 +27,7 @@ redistribute the Claude Code executable.
   baseline upgrade.
 - Examples must use synthetic prompts and credential-free fixtures.
 - Installed-wheel smoke must cover both the default official CLI resolution and
-  explicit `cli_path` selection of the standalone clean-room Runtime. The latter
+  explicit `cli_path` selection of the separately installed standalone Runtime. The latter
   uses a loopback Anthropic SSE fixture; legacy external-core injection is only
   an optional rollback-envelope lane.
 - Never paste credentials, environment dumps, transcripts, workspace content,
